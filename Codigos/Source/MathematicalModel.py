@@ -59,7 +59,9 @@ class MathematicalModel(Problem):
         self.compute_new_M() if new_m else self.compute_M()
         self.jobs = self.cities.copy()
         self.jobs_arch = [(i,k) for i in self.cities for k in self.cities]
-        self.heuristic_jobs = None
+        self.heuristic_jobs = self.NNJA(self.lkh_route[1:],self.JT)
+        self.initial_fitness = self.fitness_functions([self.lkh_route[1:],self.heuristic_jobs])[0]
+
         
         self.jt_min = self.JT[self.JT>0].min()
 
@@ -81,13 +83,15 @@ class MathematicalModel(Problem):
 
     def compute_new_M(self):
         self.M = np.zeros((len(self.cities),len(self.cities)))
-        inital_value = self.fitness_functions([self.lkh_route[1:],self.NNJA(self.lkh_route[1:],self.JT)])[0]
+        route_fitness = self.route_fitness(self.lkh_route[1:])
+        self.sum_min_row = 0
         for j in range(1,len(self.cities)):
             self.M[0,j] = self.TT[0][j]
         for i in range(len(self.cities)):
+            self.sum_min_row += np.min(self.TT[i][np.nonzero(self.TT[i])])
             for j in range(len(self.cities)):
                 if i != j:
-                    self.M[i,j] = inital_value + self.TT[i][j]
+                    self.M[i,j] = route_fitness + self.TT[i][j]
 
     def create_base_model(self):
         """
@@ -198,6 +202,7 @@ class MathematicalModel(Problem):
         self.modelo._callback_time = 0
         self.modelo.setParam("Method",2) 
         #0=primal simplex, 1=dual simplex, 2=barrier, 3=concurrent, 4=deterministic concurrent
+        self.modelo.setParam("Cutoff",self.initial_fitness) 
         self.modelo.update()
 
     def add_subtour_constraint(self):
@@ -601,9 +606,6 @@ class MathematicalModel(Problem):
         Add new constraints, builts in this work.
         """
         
-        self.heuristic_jobs = self.NNJA(self.lkh_route[1:],self.JT)
-        
-        initial_fitness = self.fitness_functions([self.lkh_route[1:],self.heuristic_jobs])[0]
         route_fitness = self.route_fitness(self.lkh_route[1:])
         menor_arco_depot = min(self.TT[0][i] for i in range(1,self.n))
 
@@ -612,19 +614,22 @@ class MathematicalModel(Problem):
                 self.modelo.addConstr(self.TS[i] <= route_fitness , name = f'bounds1_TS_{i}')
 
             for i in range(1,self.n):
-                self.modelo.addConstr(self.TS[i]>=menor_arco_depot , name = f'bounds2_TS_{i}') 
+                self.modelo.addConstr(self.TS[i] >= menor_arco_depot , name = f'bounds2_TS_{i}') 
         
         elif hasattr(self,'t'):
             for i in self.cities:
                 LB = np.min(self.TT[i][np.nonzero(self.TT[i])])
                 for j in self.cities:
                     if i!=j:
-                        self.modelo.addConstr(self.t[(i,j)] <= route_fitness, name = f'bounds_t_{i}_{j}')
+                        self.modelo.addConstr(self.t[(i,j)] <= route_fitness, name = f'bounds_t_{i}_{j}')            
                     if i!=j and i*j>0:
                         self.modelo.addConstr(self.t[(i,j)] >= LB*self.x[(i,j)] , name = f'bouns_t_{i}_{j}_LB')
                 
         # Cota superior de solucion inicial (lkh+NNJ)
-        self.modelo.addConstr(self.Cmax<=initial_fitness)
+        self.modelo.addConstr(self.Cmax<=self.initial_fitness)
+        # Cota inferior de solucion inicial
+        self.modelo.addConstr(self.Cmax>= self.sum_min_row + self.jt_min)
+    
         self.modelo.update()
 
     def add_initial_solution(self):
@@ -687,7 +692,7 @@ class MathematicalModel(Problem):
             self.add_initial_solution()
 
         self.optimize()
-        self.modelo.write('model.lp')
+        #self.modelo.write('model.lp')
         self.modelo.update()
 
         # dict_values = {}
@@ -726,4 +731,5 @@ class MathematicalModel(Problem):
         
         time = round(self.modelo.Runtime,4)
         lower = round(lower,2)
-        print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}{:<10}".format(self.size,self.instance,objective,lower,gap,time,dict_status[self.modelo.Status],self.modelo.SolCount,self.modelo.NodeCount,self.modelo._callback_count,self.modelo._callback_time))
+        #print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}{:<10}".format(self.size,self.instance,objective,lower,gap,time,dict_status[self.modelo.Status],self.modelo.SolCount,self.modelo.NodeCount,self.modelo._callback_count,self.modelo._callback_time))
+        print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(self.size,self.instance,objective,lower,gap,time,dict_status[self.modelo.Status],self.modelo.NodeCount,self.modelo._callback_count,self.modelo._callback_time))

@@ -126,17 +126,17 @@ instance_dict = {"tsplib":tsplib,
                  "medium":sml_instance,
                  "large":sml_instance}
 
-argv = ["-p"              , "secuential",
-        "-size"           , "tsplib",
-        "-alg"            , "gurobi",
-        "-subtour"        , "wc",
-        "-initialsol"     , "True",
-        "-callback"       , "subtourelim1",
-        "-bounds"         , "True",
-        "-newformulation" , "True",
-        "-newm"           , "False"]
+# argv = ["-p"              , "secuential",
+#         "-size"           , "tsplib",
+#         "-alg"            , "gurobi",
+#         "-subtour"        , "wc",
+#         "-initialsol"     , "True",
+#         "-callback"       , "subtourelim1",
+#         "-bounds"         , "True",
+#         "-newformulation" , "True",
+#         "-newm"           , "True"]
 
-#argv = sys.argv[1:]
+argv = sys.argv[1:]
 set_parameters(argv)
 
 if __name__ == "__main__":
@@ -151,7 +151,7 @@ if __name__ == "__main__":
             elif paralelo == "secuential":
                 launcherMGA(_seed,size,_instancia,**parameters_value)
     else:
-        print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}{:<10}".format("size","instance","obj","lb","gap","time","status","Sol Count","NodeCount","#callback","timecallback"))
+        print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format("size","instance","obj","lb","gap","time","status","NodeCount","#callback","timecallback"))
         for _instance in instance_dict[size]:
             if paralelo == "parallel":
                 pool.apply_async(launcherMILP, args=(size,_instance,subtour,initialsol,"False",callback,bounds,new_formulation,newm))

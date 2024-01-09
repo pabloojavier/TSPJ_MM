@@ -70,7 +70,9 @@ class MathematicalModel(Problem):
         This method computes the M value, it can be overwritting.
         """
         self.M = 0
+        self.sum_min_row = 0
         for i in range(self.n):
+            self.sum_min_row += np.min(self.TT[i][np.nonzero(self.TT[i])])
             max_t = 0
             max_tt = 0
             for j in range(self.n):
@@ -200,8 +202,8 @@ class MathematicalModel(Problem):
         self.modelo.Params.Threads = 1
         self.modelo.Params.TimeLimit = self.time_limit
         self.modelo._callback_time = 0
-        self.modelo.setParam("Method",2) 
         #0=primal simplex, 1=dual simplex, 2=barrier, 3=concurrent, 4=deterministic concurrent
+        self.modelo.setParam("Method",2) 
         self.modelo.setParam("Cutoff",self.initial_fitness) 
         self.modelo.update()
 
@@ -731,5 +733,5 @@ class MathematicalModel(Problem):
         
         time = round(self.modelo.Runtime,4)
         lower = round(lower,2)
-        #print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}{:<10}".format(self.size,self.instance,objective,lower,gap,time,dict_status[self.modelo.Status],self.modelo.SolCount,self.modelo.NodeCount,self.modelo._callback_count,self.modelo._callback_time))
-        print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(self.size,self.instance,objective,lower,gap,time,dict_status[self.modelo.Status],self.modelo.NodeCount,self.modelo._callback_count,self.modelo._callback_time))
+        print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}".format(self.size,self.instance,objective,lower,gap,time,dict_status[self.modelo.Status],self.modelo.NodeCount,self.modelo._callback_count,self.modelo._callback_time))
+        #print("{}\t {}\t {}\t {}\t {}\t {}\t {}\t {}\t {}\t {}".format(self.size,self.instance,objective,lower,gap,time,dict_status[self.modelo.Status],self.modelo.NodeCount,self.modelo._callback_count,self.modelo._callback_time))

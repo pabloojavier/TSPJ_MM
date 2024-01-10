@@ -109,7 +109,7 @@ class MathematicalModel(Problem):
         self.Cmax = self.modelo.addVar(vtype=GRB.CONTINUOUS,name="Cmax")
 
         self.x = self.modelo.addVars(self.arch, vtype=GRB.BINARY, name='x')
-        self.z = self.modelo.addVars(self.jobs_arch, vtype=GRB.BINARY, name='z')
+        self.y = self.modelo.addVars(self.jobs_arch, vtype=GRB.BINARY, name='y')
 
         self.TS = self.modelo.addVars(self.cities,vtype=GRB.CONTINUOUS,name="TS")
         self.t = self.modelo.addVars(self.arch,vtype=GRB.CONTINUOUS,name="t") # new variable for the time
@@ -123,13 +123,13 @@ class MathematicalModel(Problem):
         self.modelo.addConstrs((self.x.sum('*', j) == 1 for j in self.cities), name = 'Incoming') # Incoming 
 
         for k in self.jobs[1:self.n]:
-            self.modelo.addConstr(gp.quicksum(self.z[(i,k)] for i in self.cities if i != 0) == 1 , name = f'Job_{k}_out')
+            self.modelo.addConstr(gp.quicksum(self.y[(i,k)] for i in self.cities if i != 0) == 1 , name = f'Job_{k}_out')
 
         for i in self.cities[1:self.n]: 
-            self.modelo.addConstr(gp.quicksum(self.z[(i,k)] for k in self.jobs if k != 0) == 1 , name = f'Job_{i}_in')
+            self.modelo.addConstr(gp.quicksum(self.y[(i,k)] for k in self.jobs if k != 0) == 1 , name = f'Job_{i}_in')
         
         for i in self.cities[1:self.n]:
-            self.modelo.addConstr(self.Cmax >= self.TS[i] + gp.quicksum(self.z[(i,k)]*self.JT[i][k] for k in self.jobs if k!=0 ) , name = f'Cmax_{i}')
+            self.modelo.addConstr(self.Cmax >= self.TS[i] + gp.quicksum(self.y[(i,k)]*self.JT[i][k] for k in self.jobs if k!=0 ) , name = f'Cmax_{i}')
 
         for i in self.cities[1:self.n]:
             self.modelo.addConstr(self.Cmax >= self.TS[i] + self.x[(i,0)]*self.TT[i][0] , name = f'Cmax_{i}_0')
@@ -159,7 +159,7 @@ class MathematicalModel(Problem):
         self.Cmax = self.modelo.addVar(vtype=GRB.CONTINUOUS,name="Cmax")
 
         self.x = self.modelo.addVars(self.arch, vtype=GRB.BINARY, name='x')
-        self.z = self.modelo.addVars(self.jobs_arch, vtype=GRB.BINARY, name='z')
+        self.y = self.modelo.addVars(self.jobs_arch, vtype=GRB.BINARY, name='y')
 
         self.t = self.modelo.addVars(self.arch,vtype=GRB.CONTINUOUS,name="t") # new variable for the time
 
@@ -170,17 +170,17 @@ class MathematicalModel(Problem):
         
         for i in self.cities[1:self.n]:
             self.modelo.addConstr(self.Cmax >= gp.quicksum(self.t[(i,k)] for k in self.cities if i != k) 
-                                             + gp.quicksum(self.z[(i,k)]*self.JT[i][k] for k in self.jobs if k!=0 ) , name = f'Cmax_{i}')
+                                             + gp.quicksum(self.y[(i,k)]*self.JT[i][k] for k in self.jobs if k!=0 ) , name = f'Cmax_{i}')
 
         for i in self.cities[1:self.n]:
             self.modelo.addConstr(self.Cmax >= gp.quicksum(self.t[(i,k)] for k in self.cities if i != k) 
                                              + self.x[(i,0)]*self.TT[0][i] , name = f'Cmax_{i}_0')
 
         for k in self.jobs[1:self.n]:
-            self.modelo.addConstr(gp.quicksum(self.z[(i,k)] for i in self.cities if i != 0) == 1 , name = f'Job_{k}_out')
+            self.modelo.addConstr(gp.quicksum(self.y[(i,k)] for i in self.cities if i != 0) == 1 , name = f'Job_{k}_out')
 
         for i in self.cities[1:self.n]: 
-            self.modelo.addConstr(gp.quicksum(self.z[(i,k)] for k in self.jobs if k != 0) == 1 , name = f'Job_{i}_in')
+            self.modelo.addConstr(gp.quicksum(self.y[(i,k)] for k in self.jobs if k != 0) == 1 , name = f'Job_{i}_in')
         
         self.modelo.addConstrs((self.x.sum(i,'*') == 1 for i in self.cities) , name = 'Outgoing') # Outgoing
         self.modelo.addConstrs((self.x.sum('*', j) == 1 for j in self.cities) , name = 'Incoming') # Incoming 
@@ -212,14 +212,14 @@ class MathematicalModel(Problem):
         Adds subtour constraints, it can be GG, MTZ or DL constraint
         """
         if self.subtour == "gg":
-            self.y = self.modelo.addVars(self.arch,name = "y") 
+            self.g = self.modelo.addVars(self.arch,name = "y") 
             for i in self.cities[1:self.n]: #14
-                self.modelo.addConstr(gp.quicksum(self.y[(i,j)] for j in self.cities if i !=j) - gp.quicksum(self.y[(j,i)] for j in self.cities if i !=j) == 1 , name = f'GG1_{i}')
+                self.modelo.addConstr(gp.quicksum(self.g[(i,j)] for j in self.cities if i !=j) - gp.quicksum(self.g[(j,i)] for j in self.cities if i !=j) == 1 , name = f'GG1_{i}')
 
             for i in self.cities[1:self.n]: #15
                 for j in self.cities:
                     if i!=j:
-                        self.modelo.addConstr(self.y[(i,j)]<= self.n*self.x[(i,j)] , name=f'GG2_{i}_{j}')
+                        self.modelo.addConstr(self.g[(i,j)]<= self.n*self.x[(i,j)] , name=f'GG2_{i}_{j}')
             
         elif self.subtour in ("mtz","dl","dl_real"):
             self.u = self.modelo.addVars(self.cities , vtype = GRB.CONTINUOUS , name = "u")
@@ -246,7 +246,9 @@ class MathematicalModel(Problem):
 
                 for i in range(1,self.n):
                     self.modelo.addConstr(self.u[i] <= self.n-1 - (self.n-3)*self.x[(0,i)]- gp.quicksum(self.x[(i,j)] for j in self.cities[1:] if j != i) , name = f"DL_real_{i}_UB")
-
+        elif self.subtour != "wc":
+            print(self.subtour)
+            raise ValueError("Subtour method not implemented <wc/gg/dl/mtz>")
         self.modelo.update()
 
     @staticmethod
@@ -541,10 +543,10 @@ class MathematicalModel(Problem):
                 tour2 = [i for i in range(n) if i not in tour]
                 modelo.cbLazy(gp.quicksum(modelo._xvars[i, j] for i in tour for j in tour2) >= 1)
 
-            valoresZ = modelo.cbGetNodeRel(modelo._zvars)
-            solucion = [(arco,solucion) for arco,solucion in valoresZ.items() if solucion >0 and solucion <1]
+            valoresY = modelo.cbGetNodeRel(modelo._yvars)
+            solucion = [(arco,solucion) for arco,solucion in valoresY.items() if solucion >0 and solucion <1]
             if len(solucion) >0:
-                solucion = [(arco,solucion) for arco,solucion in valoresZ.items() if solucion >0 ]
+                solucion = [(arco,solucion) for arco,solucion in valoresY.items() if solucion >0 ]
                 new_lb = MathematicalModel.get_min_job(modelo._JT,solucion)
                 if new_lb > modelo._jt_min:
                     modelo._jt_min = new_lb
@@ -655,7 +657,7 @@ class MathematicalModel(Problem):
                     if arch_name in self.initial_arch:
                         var.Start = 1
 
-                elif var.VarName[0] == "z":
+                elif var.VarName[0] == "y":
                     arch_name = tuple(var.varName.split("[")[1][:-1].split(","))
                     if arch_name in self.initial_job_arch:
                         var.Start = 1
@@ -667,7 +669,7 @@ class MathematicalModel(Problem):
         elif self.callback in self.callback_dict.keys():
             self.modelo.Params.LazyConstraints = 1
             self.modelo._xvars = self.x
-            self.modelo._zvars = self.z
+            self.modelo._yvars = self.y
             self.modelo._JT = self.JT
             self.modelo._TT = self.TT
             self.modelo._Cmax = self.Cmax
@@ -699,7 +701,7 @@ class MathematicalModel(Problem):
 
         # dict_values = {}
         # for v in self.modelo.getVars():
-        #     if v.VarName[0] in ("z"):
+        #     if v.VarName[0] in ("y"):
                 
         #         if v.X > 0.5:
         #             match = re.search(r'\[(\d+),(\d+)\]', v.VarName)

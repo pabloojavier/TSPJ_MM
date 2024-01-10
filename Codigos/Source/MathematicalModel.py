@@ -110,9 +110,7 @@ class MathematicalModel(Problem):
 
         self.x = self.modelo.addVars(self.arch, vtype=GRB.BINARY, name='x')
         self.y = self.modelo.addVars(self.jobs_arch, vtype=GRB.BINARY, name='y')
-
         self.TS = self.modelo.addVars(self.cities,vtype=GRB.CONTINUOUS,name="TS")
-        self.t = self.modelo.addVars(self.arch,vtype=GRB.CONTINUOUS,name="t") # new variable for the time
 
         self.modelo.setObjective(self.Cmax, GRB.MINIMIZE)
 
@@ -696,7 +694,6 @@ class MathematicalModel(Problem):
             self.add_initial_solution()
 
         self.optimize()
-        #self.modelo.write('model.lp')
         self.modelo.update()
 
         # dict_values = {}

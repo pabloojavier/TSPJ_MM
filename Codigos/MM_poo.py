@@ -92,8 +92,9 @@ initial_sol = True
 callback =  'subtourelim1'
 bounds = True
 new_formulation = True
-time_limit = 1800
+time_limit = 3600
 new_m = True
+relax = False
 
 for i in range(len(opts)):
     if opts[i][0][1:] == "size":  size  = opts[i][1]
@@ -117,6 +118,7 @@ for i in range(len(opts)):
             callback = opts[i][1]
     elif   opts[i][0][1:] == "newformulation": new_formulation =  False if opts[i][1].lower() == "false" else True
     elif   opts[i][0][1:] == "newm": new_m =  False if opts[i][1].lower() == "false" else True
+    elif   opts[i][0][1:] == "relax": relax =  False if opts[i][1].lower() == "false" else True
 
 MM = MILP(size,
           instance,
@@ -127,7 +129,8 @@ MM = MILP(size,
           bounds,
           new_formulation,
           time_limit,
-          new_m = new_m
+          new_m = new_m,
+          relax = relax
           )
 MM.run()
 MM.print_results()

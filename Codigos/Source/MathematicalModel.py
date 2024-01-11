@@ -22,7 +22,8 @@ class MathematicalModel(Problem):
                  bounds: bool = True,
                  new_formulation: bool = False,
                  time_limit : int = 1800,
-                 new_m : bool = False
+                 new_m : bool = False,
+                 relax : bool = False
                  ):
         """
         Initialize mathematical model with some default values
@@ -43,6 +44,7 @@ class MathematicalModel(Problem):
         self.bounds = bounds
         self.time_limit = time_limit
         self.new_m = new_m
+        self.relax = relax
         self.new_formulation = new_formulation
         self.callback_dict = {"cut_integer_separation":MathematicalModel.CUT_integer_separation,
                               "cut_naive_fractional_separation":MathematicalModel.CUT_naive_fractional_separation,
@@ -108,8 +110,9 @@ class MathematicalModel(Problem):
 
         self.Cmax = self.modelo.addVar(vtype=GRB.CONTINUOUS,name="Cmax")
 
-        self.x = self.modelo.addVars(self.arch, vtype=GRB.BINARY, name='x')
-        self.y = self.modelo.addVars(self.jobs_arch, vtype=GRB.BINARY, name='y')
+        var_mode = GRB.CONTINUOUS if self.relax else GRB.BINARY
+        self.x = self.modelo.addVars(self.arch, vtype=var_mode, name='x')
+        self.y = self.modelo.addVars(self.jobs_arch, vtype=var_mode, name='y')
         self.TS = self.modelo.addVars(self.cities,vtype=GRB.CONTINUOUS,name="TS")
 
         self.modelo.setObjective(self.Cmax, GRB.MINIMIZE)
@@ -156,8 +159,9 @@ class MathematicalModel(Problem):
 
         self.Cmax = self.modelo.addVar(vtype=GRB.CONTINUOUS,name="Cmax")
 
-        self.x = self.modelo.addVars(self.arch, vtype=GRB.BINARY, name='x')
-        self.y = self.modelo.addVars(self.jobs_arch, vtype=GRB.BINARY, name='y')
+        var_mode = GRB.CONTINUOUS if self.relax else GRB.BINARY
+        self.x = self.modelo.addVars(self.arch, vtype=var_mode, name='x')
+        self.y = self.modelo.addVars(self.jobs_arch, vtype=var_mode, name='y')
 
         self.t = self.modelo.addVars(self.arch,vtype=GRB.CONTINUOUS,name="t") # new variable for the time
 
@@ -712,7 +716,10 @@ class MathematicalModel(Problem):
 
     def print_results(self):
         dict_status = {1: 'LOADED', 2: 'OPTIMAL', 3: 'INFEASIBLE', 4: 'INF_OR_UNBD', 5: 'UNBOUNDED', 6: 'CUTOFF', 7: 'ITERATION_LIMIT', 8: 'NODE_LIMIT', 9: 'TIME_LIMIT', 10: 'SOLUTION_LIMIT', 11: 'INTERRUPTED', 12: 'NUMERIC', 13: 'SUBOPTIMAL', 14: 'INPROGRESS', 15: 'USER_OBJ_LIMIT'}
-        lower = self.modelo.ObjBoundC
+        try:
+            lower = self.modelo.ObjBoundC
+        except AttributeError:
+            lower = self.modelo.ObjBound
         objective = float("inf")
         gap =  float("inf")
         if self.modelo.Status == GRB.OPTIMAL or self.modelo.SolCount > 0:

@@ -627,9 +627,11 @@ class MathematicalModel(Problem):
                 LB = np.min(self.TT[i][np.nonzero(self.TT[i])])
                 for j in self.cities:
                     if i!=j:
-                        self.modelo.addConstr(self.t[(i,j)] <= route_fitness, name = f'bounds_t_{i}_{j}')            
+                        self.modelo.addConstr(self.t[(i,j)] <= route_fitness, name = f'bounds1_t_{i}_{j}')            
+                        self.modelo.addConstr(self.x[(i,j)] + self.x[(j,i)] <= 1 , name = f'bouns2_t_{i}_{j}')
                     if i!=j and i*j>0:
-                        self.modelo.addConstr(self.t[(i,j)] >= LB*self.x[(i,j)] , name = f'bouns_t_{i}_{j}_LB')
+                        self.modelo.addConstr(self.t[(i,j)] >= LB*self.x[(i,j)] , name = f'bouns3_t_{i}_{j}')
+                    
                 
         # Cota superior de solucion inicial (lkh+NNJ)
         self.modelo.addConstr(self.Cmax<=self.initial_fitness)

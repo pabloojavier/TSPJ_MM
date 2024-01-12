@@ -63,7 +63,7 @@ class MathematicalModel(Problem):
         self.jobs_arch = [(i,k) for i in self.cities for k in self.cities]
         self.heuristic_jobs = self.NNJA(self.lkh_route[1:],self.JT)
         self.initial_fitness = self.fitness_functions([self.lkh_route[1:],self.heuristic_jobs])[0]
-
+        self.initial_solution_time = 0
         
         self.jt_min = self.JT[self.JT>0].min()
 
@@ -142,7 +142,6 @@ class MathematicalModel(Problem):
 
         
         self.modelo.Params.Threads = 1
-        self.modelo.Params.TimeLimit = self.time_limit
         self.modelo._callback_time = 0
         self.modelo.update()
 
@@ -202,7 +201,6 @@ class MathematicalModel(Problem):
                     self.modelo.addConstr(self.t[(i,k)] >= 0 , name = f't_{i}_{k}_LB')
         
         self.modelo.Params.Threads = 1
-        self.modelo.Params.TimeLimit = self.time_limit
         self.modelo._callback_time = 0
         #0=primal simplex, 1=dual simplex, 2=barrier, 3=concurrent, 4=deterministic concurrent
         self.modelo.setParam("Method",2) 
@@ -644,7 +642,7 @@ class MathematicalModel(Problem):
         """
         Add initial solution to MILP from LKH and NNJA
         """
-
+        self.initial_solution_time = time.time()
         self.initial_arch = MathematicalModel.__sort_arch(self.lkh_route)
         if self.heuristic_jobs is None:
             self.heuristic_jobs = self.NNJA(self.lkh_route[1:],self.JT) 
@@ -665,9 +663,11 @@ class MathematicalModel(Problem):
                     arch_name = tuple(var.varName.split("[")[1][:-1].split(","))
                     if arch_name in self.initial_job_arch:
                         var.Start = 1
+        self.initial_solution_time = time.time()-self.initial_solution_time
         self.modelo.update()
 
     def optimize(self):
+        self.modelo.update()
         if self.callback in ("none",None) :
             self.modelo.optimize()
         elif self.callback in self.callback_dict.keys():
@@ -699,6 +699,7 @@ class MathematicalModel(Problem):
         if self.initial_solution:
             self.add_initial_solution()
 
+        self.modelo.Params.TimeLimit = self.time_limit - self.initial_solution_time
         self.optimize()
         self.modelo.update()
 
@@ -739,7 +740,7 @@ class MathematicalModel(Problem):
                 lower = round(lower,2)
                 objective = round(objective,2)
         
-        time = round(self.modelo.Runtime,4)
+        time = round(self.modelo.Runtime + self.initial_solution_time,4) 
         lower = round(lower,2)
         print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}".format(self.size,self.instance,objective,lower,gap,time,dict_status[self.modelo.Status],self.modelo.NodeCount,self.modelo._callback_count,self.modelo._callback_time))
         #print("{}\t {}\t {}\t {}\t {}\t {}\t {}\t {}\t {}\t {}".format(self.size,self.instance,objective,lower,gap,time,dict_status[self.modelo.Status],self.modelo.NodeCount,self.modelo._callback_count,self.modelo._callback_time))

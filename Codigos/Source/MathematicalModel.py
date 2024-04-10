@@ -10,7 +10,138 @@ from Source.Problem import Problem
 import time
 import re
 import math
+import matplotlib.pyplot as plt
 warnings.filterwarnings("ignore")
+
+import numpy as np
+
+def get_min_job(JT: np.ndarray, ja):
+    """
+    Returns the minimum jobtime from a relaxed job assignments.
+
+    Parameters:
+    JT (np.ndarray): The input array.
+    ja (list): A list of tuples representing job assignments and his relaxed value.
+
+    Returns:
+    float: The minimum value from the modified array.
+    """
+    JT = JT.T
+    df = JT.copy()
+    assigns = [i[0] for i in ja if i[1] > 0.99]
+    for i in assigns:
+        df[:, i[0]] = 99999
+        df[i[1], i[0]] = JT[i[1]][i[0]]
+
+    for i in assigns:
+        df[i[1]] = 99999
+        df[i[1], i[0]] = JT[i[1]][i[0]]
+
+    return df[df > 0].min()
+
+def NNJA(route,JT):
+    """
+    Neares Neighbor Algorithm for Job Assignment. From the last node of the tour assigns
+    the cheapest job available. Then in the next node assing the cheapest job availabe 
+    and so on until the first node
+    """
+    job = []
+    n = len(route)  
+    cont = len(route)-1
+    while len(job)<n:
+        times = {(i,route[cont]):JT[route[cont]][i] for i in range(1,n+1)}
+        new = min(times.items(),key=lambda x:x[1]) 
+        job.append(new[0][1])
+        cont -= 1
+    return job
+
+def sort_jobs(route,jobs):
+    return [(route[i],jobs[i]) for i in range(len(route))]
+
+def sort_arch(route):
+    """
+    Aux method, from a list solution to a arch solution.
+    """
+    archs = []
+    for i in range(len(route)-1):
+        archs.append((str(route[i]),str(route[i+1])))
+    archs.append((str(route[-1]),str(route[0])))
+    return archs
+
+def delta(G,U): 
+    ejes = set()
+    for l, nbrs in ((n, G[n]) for n in U):
+        ejes.update( (l,y) if l<y else (y,l) for y in nbrs if y not in U)
+    return ejes
+
+def term(e,H):
+    s = max(H[e[0]][e[1]]['weight'], 1-H[e[0]][e[1]]['weight'])
+    t = min(H[e[0]][e[1]]['weight'],1-H[e[0]][e[1]]['weight']) 
+    return(s-t)
+
+def totalcap(G,F,capacity = 'weight'):
+    cap = [G[e[0]][e[1]][capacity] for e in F]
+    val = sum(cap) 
+    return(val)
+
+def padberg_rao(valoresX):
+    weights = {(u[0],u[1]):v  for u,v in valoresX.items()}
+    capacity = {(u[0],u[1]):min(v,1-v) for u,v in valoresX.items()}
+
+    # fig,ax = plt.subplots(1,4,figsize = (15,6))
+    
+    G = nx.Graph()
+    for e,v in weights.items():
+        if v > 0:
+            G.add_edge(e[0],e[1],weight = v)
+    
+    H = nx.Graph()
+    for e,v in capacity.items():
+        if v > 0:
+            H.add_edge(e[0],e[1],capacity = v,weight = weights[e])
+        else:
+            H.add_nodes_from([e[0],e[1]])
+
+    # pos = nx.spring_layout(G)
+    
+    # g_edge_label = {k: round(v, 3) for k, v in nx.get_edge_attributes(G, 'weight').items() if v > 0}
+    # nx.draw(G,ax = ax[0],with_labels=True,pos = pos)
+    # nx.draw_networkx_edge_labels(G, pos, edge_labels=g_edge_label,ax=ax[0],font_size=6)
+    # ax[0].set_title('Original Graph\nwith weights as x*')
+
+    # h_edge_label = {k: round(v, 3) for k, v in nx.get_edge_attributes(H, 'capacity').items() if v > 0 }
+    # nx.draw(H,ax = ax[1],with_labels=True,pos = pos)
+    # nx.draw_networkx_edge_labels(H, pos, edge_labels=h_edge_label,ax=ax[1],font_size=6)
+    # ax[1].set_title('H Graph\nwith capacities as min(x*,1-x*)')
+    
+    gomHu = nx.gomory_hu_tree(H, capacity = 'capacity')
+    # nx.draw(gomHu,ax = ax[2],with_labels = True,pos = pos)
+    # ax[2].set_title('Gomory-Hu Tree\nfrom H Graph')
+
+    for e in gomHu.edges():
+        # ax[3].cla()
+        Te = nx.Graph(gomHu)
+        Te.remove_edge(e[0],e[1])
+        U,V = list(nx.connected_components(Te))
+        # nx.draw(Te,ax = ax[3],with_labels = True,pos = pos)
+        # nx.draw_networkx_edges(Te, ax=ax[3], pos=pos, edgelist=[e], edge_color='r',style='dashed')
+        cutset = delta(H,U)
+
+        Fe = set([e for e in cutset if 1-H[e[0]][e[1]]['weight'] < H[e[0]][e[1]]['weight']])
+        if (len(U) + len(Fe))%2 == 0 and len(cutset)>0 :
+            Faux = sorted([(term(edge,H),edge) for edge in cutset])
+            fp = set()
+            fp.add(Faux[0][1])
+            Fe = Fe.symmetric_difference(fp)
+
+        fig = None
+        des = totalcap(H,cutset.difference(Fe)) + len(Fe) - totalcap(H,Fe)
+        if des<1 and len(cutset)>0 and len(Fe)>0:
+            # print('constraint:',cutset.difference(Fe),Fe,len(Fe))
+            # ax[3].set_title(f'Edge {e} removed from Gomory-Hu Tree\nU:{U}\n V:{V}\n Cutset:{cutset}-{Fe}')
+            return (cutset,Fe,fig)
+            
+    return (None,None,fig)
 
 class MathematicalModel(Problem):
     def __init__(self,size:str,
@@ -53,6 +184,7 @@ class MathematicalModel(Problem):
                               "dfj_naive_fractional_separation":MathematicalModel.DFJ_naive_fractional_separation,
                               "dfj_smarter_fractional_separation":MathematicalModel.DFJ_smarter_fractional_separation,
                               "subtourelim1":MathematicalModel.subtourelim1,
+                              "subtourelim_gomhu":MathematicalModel.subtourelim_gomhu,
                               "subtourelim2":MathematicalModel.subtourelim2,
                               #'integer_fractional_cut':MathematicalModel.integer_fractional_cut,
                               'custom':callback}
@@ -61,7 +193,7 @@ class MathematicalModel(Problem):
         self.compute_new_M() if new_m else self.compute_M()
         self.jobs = self.cities.copy()
         self.jobs_arch = [(i,k) for i in self.cities for k in self.cities]
-        self.heuristic_jobs = self.NNJA(self.lkh_route[1:],self.JT)
+        self.heuristic_jobs = NNJA(self.lkh_route[1:],self.JT)
         self.initial_fitness = self.fitness_functions([self.lkh_route[1:],self.heuristic_jobs])[0]
         self.initial_solution_time = 0
         
@@ -89,8 +221,8 @@ class MathematicalModel(Problem):
         self.M = np.zeros((len(self.cities),len(self.cities)))
         route_fitness = self.route_fitness(self.lkh_route[1:])
         self.sum_min_row = 0
-        for j in range(1,len(self.cities)):
-            self.M[0,j] = self.TT[0][j]
+        # for j in range(1,len(self.cities)):
+        #     self.M[0,j] = self.TT[0][j]
         for i in range(len(self.cities)):
             self.sum_min_row += np.min(self.TT[i][np.nonzero(self.TT[i])])
             for j in range(len(self.cities)):
@@ -248,7 +380,7 @@ class MathematicalModel(Problem):
                     self.modelo.addConstr(self.u[i] <= self.n-1 - (self.n-3)*self.x[(0,i)]- gp.quicksum(self.x[(i,j)] for j in self.cities[1:] if j != i) , name = f"DL_real_{i}_UB")
         elif self.subtour != "wc":
             print(self.subtour)
-            raise ValueError("Subtour method not implemented <wc/gg/dl/mtz>")
+            raise ValueError("Subtour method not implemented <wc/gg/dl/mtz/wc>")
         self.modelo.update()
 
     @staticmethod
@@ -530,6 +662,23 @@ class MathematicalModel(Problem):
         modelo._callback_time += time.time()-initial
 
     @staticmethod
+    def subtourelim_gomhu(modelo:gp.Model, donde):
+        initial = time.time()
+        n = modelo._n
+
+        if donde == GRB.Callback.MIPNODE  and ( modelo.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL):
+            valoresX = modelo.cbGetNodeRel(modelo._xvars)
+
+            cutset,Fe,fig = padberg_rao(valoresX)
+            if cutset != None and Fe != None:
+                modelo._callback_count +=1
+                modelo.cbLazy(gp.quicksum(modelo._xvars[e] for e in cutset.difference(Fe))-
+                              gp.quicksum(modelo._xvars[e] for e in Fe) 
+                              >= 1-len(Fe))
+
+        modelo._callback_time += time.time()-initial
+
+    @staticmethod
     def subtourelim2(modelo:gp.Model, donde):        
         initial = time.time()
         n = modelo._n
@@ -547,7 +696,7 @@ class MathematicalModel(Problem):
             solucion = [(arco,solucion) for arco,solucion in valoresY.items() if solucion >0 and solucion <1]
             if len(solucion) >0:
                 solucion = [(arco,solucion) for arco,solucion in valoresY.items() if solucion >0 ]
-                new_lb = MathematicalModel.get_min_job(modelo._JT,solucion)
+                new_lb = get_min_job(modelo._JT,solucion)
                 if new_lb > modelo._jt_min:
                     modelo._jt_min = new_lb
                     #print(modelo._jt_min)
@@ -556,55 +705,6 @@ class MathematicalModel(Problem):
 
         modelo._callback_time += time.time()-initial    
     
-    @staticmethod
-    def __sort_arch(route):
-        """
-        Aux method, from a list solution to a arch solution.
-        """
-        archs = []
-        for i in range(len(route)-1):
-            archs.append((str(route[i]),str(route[i+1])))
-        archs.append((str(route[-1]),str(route[0])))
-        return archs
-
-    @staticmethod
-    def NNJA(route,JT):
-        """
-        Neares Neighbor Algorithm for Job Assignment. From the last node of the tour assigns
-        the cheapest job available. Then in the next node assing the cheapest job availabe 
-        and so on until the first node
-        """
-        job = []
-        n = len(route)  
-        cont = len(route)-1
-        while len(job)<n:
-            times = {(i,route[cont]):JT[route[cont]][i] for i in range(1,n+1)}
-            new = min(times.items(),key=lambda x:x[1]) 
-            job.append(new[0][1])
-            cont -= 1
-        return job
-
-    @staticmethod
-    def sort_jobs(route,jobs):
-        return [(route[i],jobs[i]) for i in range(len(route))]
-
-    @staticmethod
-    def get_min_job(JT:np.ndarray,ja):
-        JT = JT.T
-        df = JT.copy()
-        # print(ja)
-        assigns = [i[0] for i in ja if i[1]>0.99]
-        np.set_printoptions(linewidth=160)
-        for i in assigns:
-            df[:,i[0]] = 99999
-            df[i[1],i[0]] = JT[i[1]][i[0]]
-        
-        for i in assigns:
-            df[i[1]] = 99999
-            df[i[1],i[0]] = JT[i[1]][i[0]]
-
-        return df[df>0].min()
-
     def add_new_constraint(self):
         """
         Add new constraints, builts in this work.
@@ -643,10 +743,10 @@ class MathematicalModel(Problem):
         Add initial solution to MILP from LKH and NNJA
         """
         self.initial_solution_time = time.time()
-        self.initial_arch = MathematicalModel.__sort_arch(self.lkh_route)
+        self.initial_arch = sort_arch(self.lkh_route)
         if self.heuristic_jobs is None:
-            self.heuristic_jobs = self.NNJA(self.lkh_route[1:],self.JT) 
-        self.initial_job_arch = self.sort_jobs(self.lkh_route[1:],self.heuristic_jobs)
+            self.heuristic_jobs = NNJA(self.lkh_route[1:],self.JT) 
+        self.initial_job_arch = sort_jobs(self.lkh_route[1:],self.heuristic_jobs)
         
         self.modelo.NumStart = 1
         self.modelo.update()
@@ -683,10 +783,11 @@ class MathematicalModel(Problem):
             
             self.modelo._epsilon = 0.00001
             self.modelo._DG = nx.DiGraph(nx.complete_graph(self.n))
+            
             try:
                 self.modelo.optimize(self.callback_dict[self.callback])
-            except:
-                raise Exception("Callback error")
+            except Exception as e:
+                raise Exception("Callback error") from e
         else:
             raise Exception(f"Callback {self.callback} not found")
 
@@ -744,3 +845,22 @@ class MathematicalModel(Problem):
         lower = round(lower,2)
         print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}".format(self.size,self.instance,objective,lower,gap,time,dict_status[self.modelo.Status],self.modelo.NodeCount,self.modelo._callback_count,self.modelo._callback_time))
         #print("{}\t {}\t {}\t {}\t {}\t {}\t {}\t {}\t {}\t {}".format(self.size,self.instance,objective,lower,gap,time,dict_status[self.modelo.Status],self.modelo.NodeCount,self.modelo._callback_count,self.modelo._callback_time))
+
+    def get_solution(self):
+        tsp_sol =  [key for key,value in self.modelo.getAttr('x', self.x).items() if value>0]
+        actual = 0
+        tsp_solution = []
+        while len(tsp_solution) < self.n:
+            tsp_solution.append(actual)
+            for i in tsp_sol:
+                if i[0]==actual and i[1] not in tsp_solution:
+                    _next = i[1]
+                    actual = _next
+                    break
+        
+        job_sol = {key[0]:key[1] for key,value in self.modelo.getAttr('x', self.y).items() if value>0}
+        job_sol = [0]+[job_sol[i] for i in tsp_solution[1:]]
+        return tsp_solution,job_sol
+    
+    def print_solution(self):
+        print(self.get_solution())

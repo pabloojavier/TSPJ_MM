@@ -128,18 +128,18 @@ instance_dict = {"tsplib":tsplib,
                  "medium":sml_instance,
                  "large":sml_instance}
 
-# argv = ["-p"              , "sequential",
-#         "-size"           , "tsplib",
-#         "-alg"            , "gurobi",
-#         "-subtour"        , "wc",
-#         "-initialsol"     , "True",
-#         "-callback"       , "subtourelim1",
-#         "-bounds"         , "True",
-#         "-newformulation" , "False",
-#         "-newm"           , "True",
-#         "-relax"          , "True",]
+argv = ["-p"              , "sequential",
+        "-size"           , "small",
+        "-alg"            , "gurobi",
+        "-subtour"        , "dl",
+        "-initialsol"     , "False",
+        "-callback"       , "none",
+        "-bounds"         , "False",
+        "-newformulation" , "False",
+        "-newm"           , "False",
+        "-relax"          , "False",]
 
-argv = sys.argv[1:]
+# argv = sys.argv[1:]
 set_parameters(argv)
 
 if __name__ == "__main__":

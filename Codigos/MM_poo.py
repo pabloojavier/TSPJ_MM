@@ -134,3 +134,4 @@ MM = MILP(size,
           )
 MM.run()
 MM.print_results()
+MM.print_solution()

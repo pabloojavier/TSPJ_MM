@@ -5,7 +5,7 @@ import numpy as np
 import numpy.typing as npt
 import warnings
 import networkx as nx
-from typing import Dict, List, Callable, Any
+from typing import Dict, List, Callable, Any,Tuple
 from Source.Problem import Problem 
 import time
 import re
@@ -84,64 +84,75 @@ def totalcap(G,F,capacity = 'weight'):
     val = sum(cap) 
     return(val)
 
-def padberg_rao(valoresX):
-    weights = {(u[0],u[1]):v  for u,v in valoresX.items()}
-    capacity = {(u[0],u[1]):min(v,1-v) for u,v in valoresX.items()}
+def letchford_algorithm(
+        G:nx.Graph,
+        x_values:Dict[Tuple[int,int],float],
+        symmetric:bool = False
+        ) -> tuple:
+    """
+    Letchford algorithm for the TSP problem.
 
-    # fig,ax = plt.subplots(1,4,figsize = (15,6))
-    
-    G = nx.Graph()
-    for e,v in weights.items():
-        if v > 0:
-            G.add_edge(e[0],e[1],weight = v)
-    
+    Letchford, Adam; Reinelt, Gerhard; Theis, Dirk Oliver. (2004). A Faster Exact Separation Algorithm for Blossom Inequalities. 10.1007/978-3-540-25960-215.
+    """
+    if symmetric:
+        c = {key:min(value+x_values[(key[1],key[0])],1-value-x_values[(key[1],key[0])]) for key,value in x_values.items()}
+    else:
+        c = {key:min(value,1-value) for key,value in x_values.items()}
+
     H = nx.Graph()
-    for e,v in capacity.items():
-        if v > 0:
-            H.add_edge(e[0],e[1],capacity = v,weight = weights[e])
-        else:
-            H.add_nodes_from([e[0],e[1]])
+    for e in G.edges:
+        if x_values[e] > 0 and e[0]<e[1]:
+            if symmetric:
+                H.add_edge(e[0],e[1],capacity = c[e], weight = x_values[e])
+            else:
+                H.add_edge(e[0],e[1],capacity = c[e], weight = x_values[e]+x_values[(e[1],e[0])])
 
-    # pos = nx.spring_layout(G)
+    GomHu:nx.Graph = nx.gomory_hu_tree(H, capacity = 'capacity')
     
-    # g_edge_label = {k: round(v, 3) for k, v in nx.get_edge_attributes(G, 'weight').items() if v > 0}
-    # nx.draw(G,ax = ax[0],with_labels=True,pos = pos)
-    # nx.draw_networkx_edge_labels(G, pos, edge_labels=g_edge_label,ax=ax[0],font_size=6)
-    # ax[0].set_title('Original Graph\nwith weights as x*')
-
-    # h_edge_label = {k: round(v, 3) for k, v in nx.get_edge_attributes(H, 'capacity').items() if v > 0 }
-    # nx.draw(H,ax = ax[1],with_labels=True,pos = pos)
-    # nx.draw_networkx_edge_labels(H, pos, edge_labels=h_edge_label,ax=ax[1],font_size=6)
-    # ax[1].set_title('H Graph\nwith capacities as min(x*,1-x*)')
-    
-    gomHu = nx.gomory_hu_tree(H, capacity = 'capacity')
-    # nx.draw(gomHu,ax = ax[2],with_labels = True,pos = pos)
-    # ax[2].set_title('Gomory-Hu Tree\nfrom H Graph')
-
-    for e in gomHu.edges():
-        # ax[3].cla()
-        Te = nx.Graph(gomHu)
-        Te.remove_edge(e[0],e[1])
+    for e in GomHu.edges:
+        Te = nx.Graph(GomHu)
+        Te.remove_edge(*e)
         U,V = list(nx.connected_components(Te))
-        # nx.draw(Te,ax = ax[3],with_labels = True,pos = pos)
-        # nx.draw_networkx_edges(Te, ax=ax[3], pos=pos, edgelist=[e], edge_color='r',style='dashed')
-        cutset = delta(H,U)
+        
+        if len(U)<len(V):
+            U_,V_ = U,V
+        else:
+            V_,U_ = U,V
+        del V,V_
+        
+        if len(U_)<3:
+            continue
 
-        Fe = set([e for e in cutset if 1-H[e[0]][e[1]]['weight'] < H[e[0]][e[1]]['weight']])
-        if (len(U) + len(Fe))%2 == 0 and len(cutset)>0 :
-            Faux = sorted([(term(edge,H),edge) for edge in cutset])
+        delta_W = delta(H,U_)
+        Fe = []
+        added_nodes = []
+        for e in delta(H,U_):
+            if 1 - H[e[0]][e[1]]['weight'] < H[e[0]][e[1]]['weight'] :
+                if e[0] in added_nodes or e[1] in added_nodes:
+                    continue
+                Fe.append(e)
+                added_nodes.append(e[0])
+                added_nodes.append(e[1])
+        del added_nodes
+        
+        Fe = set(Fe)
+        if len(Fe) == 0:
+            continue
+
+        if len(Fe)%2 == 0:
+            Faux = sorted([(term(edge,H),edge) for edge in delta_W])
             fp = set()
             fp.add(Faux[0][1])
             Fe = Fe.symmetric_difference(fp)
+        
+        des = totalcap(H,delta_W.difference(Fe)) + len(Fe) - totalcap(H,Fe)
 
-        fig = None
-        des = totalcap(H,cutset.difference(Fe)) + len(Fe) - totalcap(H,Fe)
-        if des<1 and len(cutset)>0 and len(Fe)>0:
-            # print('constraint:',cutset.difference(Fe),Fe,len(Fe))
-            # ax[3].set_title(f'Edge {e} removed from Gomory-Hu Tree\nU:{U}\n V:{V}\n Cutset:{cutset}-{Fe}')
-            return (cutset,Fe,fig)
-            
-    return (None,None,fig)
+        if len(Fe) != len(U_):
+            continue
+        if des < 0.999:
+            return U_,Fe
+
+    return None,None
 
 class MathematicalModel(Problem):
     def __init__(self,size:str,
@@ -184,9 +195,8 @@ class MathematicalModel(Problem):
                               "dfj_naive_fractional_separation":MathematicalModel.DFJ_naive_fractional_separation,
                               "dfj_smarter_fractional_separation":MathematicalModel.DFJ_smarter_fractional_separation,
                               "subtourelim1":MathematicalModel.subtourelim1,
-                              "subtourelim_gomhu":MathematicalModel.subtourelim_gomhu,
                               "subtourelim2":MathematicalModel.subtourelim2,
-                              #'integer_fractional_cut':MathematicalModel.integer_fractional_cut,
+                              "blossom":MathematicalModel.blossom_method,
                               'custom':callback}
         if self.output:
             print(f'running with: {self.size} {self.instance} {self.subtour} {self.initial_solution} {self.callback} {self.bounds} {self.new_formulation} {self.time_limit} {self.new_m}')
@@ -655,26 +665,9 @@ class MathematicalModel(Problem):
             tour = [i for i in range(n+1)]
             MathematicalModel.subtour_method(tour, valoresX,n)
             if len(tour) < n:
-                modelo._callback_count +=1 
+                modelo._callback_count +=1
                 tour2 = [i for i in range(n) if i not in tour]
                 modelo.cbLazy(gp.quicksum(modelo._xvars[i, j] for i in tour for j in tour2) >= 1)
-
-        modelo._callback_time += time.time()-initial
-
-    @staticmethod
-    def subtourelim_gomhu(modelo:gp.Model, donde):
-        initial = time.time()
-        n = modelo._n
-
-        if donde == GRB.Callback.MIPNODE  and ( modelo.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL):
-            valoresX = modelo.cbGetNodeRel(modelo._xvars)
-
-            cutset,Fe,fig = padberg_rao(valoresX)
-            if cutset != None and Fe != None:
-                modelo._callback_count +=1
-                modelo.cbLazy(gp.quicksum(modelo._xvars[e] for e in cutset.difference(Fe))-
-                              gp.quicksum(modelo._xvars[e] for e in Fe) 
-                              >= 1-len(Fe))
 
         modelo._callback_time += time.time()-initial
 
@@ -705,6 +698,37 @@ class MathematicalModel(Problem):
 
         modelo._callback_time += time.time()-initial    
     
+    @staticmethod
+    def blossom_method(model:gp.Model, donde):
+        initial = time.time()
+        n = model._n
+        case1 = donde == gp.GRB.Callback.MIPSOL
+        case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( model.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
+        
+        if not case1 and not case2:
+            return
+        
+        if case1:
+            valoresX = model.cbGetSolution(model._xvars)
+        elif case2:
+            valoresX = model.cbGetNodeRel(model._xvars)
+
+        tour = [i for i in range(n+1)]
+        MathematicalModel.subtour_method(tour, valoresX,n)
+
+        if len(tour) < n:
+            tour2 = [i for i in range(n) if i not in tour]
+            model.cbLazy(gp.quicksum(model._xvars[i, j] for i in tour for j in tour2) >= 1)
+            model._callback_count += 1
+
+        if case2:
+            W,Fe = letchford_algorithm(model._G,valoresX)
+            if W != None and Fe != None:
+                model.cbLazy(gp.quicksum(model._xvars[e] for e in [e for e in valoresX if valoresX[e] > 0 and e[0] in W and e[1] in W and e[0]<e[1]] )+ 
+                            gp.quicksum(model._xvars[e] for e in Fe)<=len(W)+sum([len(e) for e in Fe])-(3*len(Fe)+1)/2)
+                model._callback_count += 1
+        model._callback_time += time.time()-initial
+
     def add_new_constraint(self):
         """
         Add new constraints, builts in this work.
@@ -780,9 +804,15 @@ class MathematicalModel(Problem):
             self.modelo._jt_min = self.jt_min
             self.modelo._cities = self.cities
             self.modelo._n = self.n
+            self.modelo._coords = self.coords
             
-            self.modelo._epsilon = 0.00001
-            self.modelo._DG = nx.DiGraph(nx.complete_graph(self.n))
+            if self.callback == "blossom":
+                self.modelo._G = nx.Graph(nx.complete_graph(self.n))
+            elif 'separation' in self.callback:
+                self.modelo._epsilon = 0.00001
+                self.modelo._DG = nx.DiGraph(nx.complete_graph(self.n))
+            else:
+                self.modelo._DG = None
             
             try:
                 self.modelo.optimize(self.callback_dict[self.callback])

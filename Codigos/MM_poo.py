@@ -8,6 +8,7 @@ warnings.filterwarnings("ignore")
 
 from Source.MathematicalModel import MathematicalModel as MILP
 
+
 def integer_fractional_cut1(modelo:gp.Model, donde):
     initial = time.time()
     n = modelo._n
@@ -87,13 +88,13 @@ opts = [(argv[2*i],argv[2*i+1]) for i in range(int(len(argv)/2))]
 size = "tsplib"
 instance = "gr17"
 output = False
-subtour = "wc"
-initial_sol = True
-callback =  'subtourelim1'
-bounds = True
-new_formulation = True
+subtour = "gg"
+initial_sol = False
+callback =  'None'
+bounds = False
+new_formulation = False
 time_limit = 3600
-new_m = True
+new_m = False
 relax = False
 
 for i in range(len(opts)):
@@ -133,5 +134,8 @@ MM = MILP(size,
           relax = relax
           )
 MM.run()
+
+solution = {key:value for key,value in MM.modelo.getAttr('x', MM.x).items() if value>0.1}
+# print(MM.get_solution()[0])
 MM.print_results()
-MM.print_solution()
+

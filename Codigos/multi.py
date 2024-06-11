@@ -126,7 +126,10 @@ sml_instance = [i for i in range(1,101)]
 instance_dict = {"tsplib":tsplib,
                  "small":sml_instance,
                  "medium":sml_instance,
-                 "large":sml_instance}
+                 "large":sml_instance,
+                 "all":tsplib+sml_instance+sml_instance+sml_instance}
+
+
 
 # argv = ["-p"              , "sequential",
 #         "-size"           , "small",
@@ -155,11 +158,19 @@ if __name__ == "__main__":
                 launcherMGA(_seed,size,_instancia,**parameters_value)
     else:
         print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}".format("size","instance","obj","lb","gap","time","status","NodeCount","#callback","timecallback"))
-        for _instance in instance_dict[size]:
+        for k,_instance in enumerate(instance_dict[size]):
+            if size == 'all' and k < 10:
+                size_ = "tsplib"
+            elif size == 'all' and k < 110:
+                size_ = "small"
+            elif size == 'all' and k < 210:
+                size_ = "medium"
+            else:
+                size_ = "large"
             if paralelo == "parallel":
-                pool.apply_async(launcherMILP, args=(size,_instance,subtour,initialsol,"False",callback,bounds,new_formulation,newm,relax))
+                pool.apply_async(launcherMILP, args=(size_,_instance,subtour,initialsol,"False",callback,bounds,new_formulation,newm,relax))
             elif paralelo == "sequential":
-                launcherMILP(size,_instance,subtour,initialsol,"False",callback,bounds,new_formulation,newm,relax)
+                launcherMILP(size_,_instance,subtour,initialsol,"False",callback,bounds,new_formulation,newm,relax)
     
     if paralelo == "parallel":
         pool.close()

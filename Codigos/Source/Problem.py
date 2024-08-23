@@ -20,7 +20,7 @@ class Problem:
     def __init__(self,size,instance):
         self.size :str = size.lower()
         self.instance : str = instance
-        self.batch = (int(self.instance)-1)//25+1 if self.size in ["small","medium","large"] else ""
+        self.batch = (int(self.instance)-1)//25+1 if self.size in ["small","medium","large","transitional"] else ""
         
         self.path = path
         self.__parameters()
@@ -33,7 +33,7 @@ class Problem:
             self.JT = pd.read_csv(location+"JT_"+self.instance+".csv",index_col= None, header = None).fillna(0).to_numpy()
             # self.coords = pd.read_csv(location+"coords_"+self.instance+".csv",index_col= None, header = None).fillna(0).to_numpy()
 
-        elif self.size in ("small","medium","large"):
+        elif self.size in ("small","medium","large","transitional"):
             location = self.path+"Data/"+str(self.size.capitalize())+"_problems/Batch_0"+str(self.batch)+"/TSPJ_"+str(self.instance)+self.size.capitalize()[0]
             self.TT = pd.read_csv(location+"_cost_table_by_coordinates.csv"    ,index_col= None, header = None).fillna(0).to_numpy()
             self.JT = pd.read_csv(location+"_tasktime_table.csv"               ,index_col= None, header = None).fillna(0).to_numpy()

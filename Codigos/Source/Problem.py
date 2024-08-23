@@ -32,25 +32,25 @@ class Problem:
             self.TT = pd.read_csv(location+"TT_"+self.instance+".csv",index_col= None, header = None).fillna(0).to_numpy()
             self.JT = pd.read_csv(location+"JT_"+self.instance+".csv",index_col= None, header = None).fillna(0).to_numpy()
             # self.coords = pd.read_csv(location+"coords_"+self.instance+".csv",index_col= None, header = None).fillna(0).to_numpy()
+            self.coords = None
 
         elif self.size in ("small","medium","large","transitional"):
             location = self.path+"Data/"+str(self.size.capitalize())+"_problems/Batch_0"+str(self.batch)+"/TSPJ_"+str(self.instance)+self.size.capitalize()[0]
             self.TT = pd.read_csv(location+"_cost_table_by_coordinates.csv"    ,index_col= None, header = None).fillna(0).to_numpy()
             self.JT = pd.read_csv(location+"_tasktime_table.csv"               ,index_col= None, header = None).fillna(0).to_numpy()
-            # self.coords = pd.read_csv(location+"_nodes_table_by_coordinates.csv",index_col= None, header = None).fillna(0).to_numpy()
+            self.coords = pd.read_csv(location+"_nodes_table_by_coordinates.csv",index_col= None, header = None).fillna(0).to_numpy()
 
         else:
             print(f"Size problem has not been specified, using test_{self.instance} problem")
             try:
                 self.TT = pd.read_csv(f"{self.path}Data/test/{self.instance}_TT_paper.csv",index_col= None, header = None).fillna(0).to_numpy()
                 self.JT = pd.read_csv(f"{self.path}Data/test/{self.instance}_JT_paper.csv",index_col= None, header = None).fillna(0).to_numpy()
-                # self.coords = pd.read_csv(f"{self.path}Data/test/{self.instance}_coords_paper.csv",index_col= None, header = None).fillna(0).to_numpy()
+                self.coords = pd.read_csv(f"{self.path}Data/test/{self.instance}_coords_paper.csv",index_col= None, header = None).fillna(0).to_numpy()
             except:
                 self.TT = pd.read_csv(f"{self.path}Data/test/1_TT_paper.csv",index_col= None, header = None).fillna(0).to_numpy()
                 self.JT = pd.read_csv(f"{self.path}Data/test/1_JT_paper.csv",index_col= None, header = None).fillna(0).to_numpy()
-                # self.coords = None
+                self.coords = None
 
-        self.coords = None
         self.n = len(self.TT)
         self.cities = [i for i in range(self.n)]
         self.arch = [(i,j) for i in self.cities for j in self.cities if i !=j]

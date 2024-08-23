@@ -206,6 +206,7 @@ def heuristic_separation(valoresX,n):
         return fixed_component,fixed_T
     return [],[]
 
+
 class MathematicalModel(Problem):
     def __init__(self,size:str,
                  instance,
@@ -260,7 +261,6 @@ class MathematicalModel(Problem):
                               "heuristic_blossom2":MathematicalModel.heuristic_blossom_method2,
                               "both_blossom2":MathematicalModel.both_blossom_method2,
                               "both_blossom3":MathematicalModel.both_blossom_method3,
-                              "both_blossom4":MathematicalModel.both_blossom_method4,
                               'custom':callback}
         if self.output:
             print(f'running with: {self.size} {self.instance} {self.subtour} {self.initial_solution} {self.callback} {self.bounds} {self.new_formulation} {self.time_limit} {self.new_m}')
@@ -1181,6 +1181,103 @@ class MathematicalModel(Problem):
         #En caso que no se agreguen restricciones, se aumenta el contador global
         model._time_total_constraints += time.time() - initial_subtour
 
+
+    @staticmethod
+    def both_blossom_method4(model:gp.Model, donde):
+        initial_subtour = time.time()
+        n = model._n
+        #case1 = donde == gp.GRB.Callback.MIPSOL
+        case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( model.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
+        
+        if case2:
+            xval = model.cbGetNodeRel(model._xvars)
+        else:
+            model._time_subtour1_constraints += time.time()-initial_subtour
+            model._time_subtour2_constraints += time.time()-initial_subtour
+            model._time_total_constraints += time.time()-initial_subtour
+            return
+        flag = True     
+        # if case2:
+        #     n = model._n
+        #     tour = sc.SEC(xval, 0.00001, n)
+        #     if len(tour) > 0:
+        #         tour2 = [i for i in range(n) if i not in tour]
+        #         model.cbLazy(gp.quicksum(model._xvars[i,j] for i in tour for j in tour2) >= 1)
+        #         model._n_subtour2_constraints += 1
+        #         flag = False
+        #     model._time_subtour2_constraints += time.time()-initial_subtour
+        if flag:
+            n = model._n
+            tour = [i for i in range(n+1)]
+            MathematicalModel.subtour_method(tour, xval, n)
+            
+            if len(tour) < n:
+                tour2 = [i for i in range(n) if i not in tour]
+                model.cbLazy(gp.quicksum(model._xvars[i, j] for i in tour for j in tour2) >= 1)
+                model._n_subtour1_constraints += 1
+                
+            model._time_subtour1_constraints += time.time()-initial_subtour
+
+        # Blossom inequalities
+        initial_heuristic_blossom = time.time()
+        W,T = heuristic_separation(xval,n)
+        # Se aumenta el contador de la separación heuristica
+        model._time_blossom_heuristic_constraints += time.time()-initial_heuristic_blossom
+        
+        #Revisa si un arco es incidente a un conjunto de nodos
+        condition = lambda e,V: (xval[e] > 0 and 
+                                (
+                                    (e[0] in V and e[1] not in V) or
+                                    (e[0] not in V and e[1] in V)
+                                ) and 
+                                e[0]<e[1])
+        condition2 = lambda e,V: (xval[e] > 0 and 
+                                (
+                                    (e[0] in V and e[1] not in V) or
+                                    (e[0] not in V and e[1] in V)
+                                ))
+
+        
+        if len(T) >= 3:
+            # print(W,T)
+            # izq2 = [e for e in xval if xval[e] > 0 and e[0] in W and e[1] in W and e[0]<e[1]]+['----']+T
+            # der2 = len(W)+sum([len(e) for e in T])-(3*len(T)+1)/2
+            # print('blossom2',len(izq2)-1,der2,'valid inequality' if not len(izq2)-1<=der2 else 'not a cutting plane',izq2,sep=';')
+
+            # izq4= [e for e in xval if condition(e,W)]+['----']+[e for e in xval if condition(e,[item for sublist in T for item in sublist])]
+            # der4 = 3*len(T)+1
+            # print('blossom4',len(izq4)-1,der4,'valid inequality' if len(izq4)-1<=der4 else 'not a cutting plane',izq4,sep=';')
+            # print(gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,W)] ))
+            # print(gp.quicksum(model._xvars[e] for e in [e for e in xval if condition2(e,[item for sublist in T for item in sublist])]))
+            # print(3*len(T)+1)
+            # exit(0)
+            """
+            REVISAR QUE LOS CORTES FUNCIONEN, el de >= 3t+1
+            ver los corte que agrega
+            verificar que sean validos 
+            """
+            model.cbLazy(gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,W)] )+ 
+                    gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,[item for sublist in T for item in sublist])])<=3*len(T)+1)
+            model._n_blossom_heuristic_constraints += 1
+            model._time_total_constraints += time.time() - initial_subtour
+            return
+        
+        initial_exact_blossom = time.time()
+        W,Fe = letchford_algorithm(model._G,xval)
+        # Se aumenta el contador de separación exacta
+        model._time_blossom_exact_constraints += time.time()-initial_exact_blossom
+        
+        if W != None and Fe != None:
+            model.cbLazy(gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,W)] )+ 
+                    gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,[item for sublist in Fe for item in sublist])])<=3*len(Fe)+1)
+            model._n_blossom_exact_constraints += 1
+            model._time_total_constraints += time.time() - initial_subtour
+            return
+        
+        #En caso que no se agreguen restricciones, se aumenta el contador global
+        model._time_total_constraints += time.time() - initial_subtour 
+
+        
     @staticmethod
     def both_blossom_method4(model:gp.Model, donde):
         initial_subtour = time.time()
@@ -1387,7 +1484,7 @@ class MathematicalModel(Problem):
         model._time_blossom_heuristic_constraints += time.time()-initial_blossom
         if len(T) >= 3:
             model.cbLazy(gp.quicksum(model._xvars[e] for e in [e for e in valoresX if valoresX[e] > 0 and e[0] in W and e[1] in W and e[0]<e[1]] )+ 
-                gp.quicksum(model._xvars[e] for e in T)<=len(T)+sum([len(e) for e in T])-(3*len(T)+1)/2)    
+                gp.quicksum(model._xvars[e] for e in T)<=len(W)+sum([len(e) for e in T])-(3*len(T)+1)/2)    
             model._n_blossom_heuristic_constraints += 1
             
         model._time_total_constraints += time.time() - initial_subtour
@@ -1461,11 +1558,17 @@ class MathematicalModel(Problem):
                     if i!=j:
                         self.modelo.addConstr(self.t[(i,j)] <= route_fitness * self.x[(i,j)], name = f'bounds1_t_{i}_{j}')            
                         #self.modelo.addConstr(self.t[(i,j)] <= route_fitness, name = f'bounds1_t_{i}_{j}')                     
-                    if i!=j and i*j>0:
+                    if i!=j and i>0:
                         self.modelo.addConstr(self.t[(i,j)] >= LB*self.x[(i,j)] , name = f'bouns3_t_{i}_{j}')
+            #for i in self.cities:
+            #    LB = np.min(self.TT[i][np.nonzero(self.TT[i])])
+            #    for j in self.cities:
+            #        if i!=j and i > 0:
+            #            self.modelo.addConstr(self.t[(i,j)] >= LB*self.x[(i,j)] , name = f'bouns3_t_{i}_{j}')
 
         # Cota total route
-        #self.modelo.addConstr(gp.quicksum(self.x[(i,j)]*self.TT[i][j] for i in self.cities for j in self.cities if i!=j) <= route_fitness)                 
+        #print(route_fitness) # no valido
+        #self.modelo.addConstr(gp.quicksum(self.x[(i,j)]*self.TT[i][j] for i in self.cities for j in self.cities[1:] if i!=j) <= route_fitness)                 
         # Cota superior de solucion inicial (lkh+NNJ)
         self.modelo.addConstr(self.Cmax<=self.initial_fitness)
         # Cota inferior de solucion inicial
@@ -1545,7 +1648,7 @@ class MathematicalModel(Problem):
         if self.initial_solution:
             self.add_initial_solution()
 
-        self.modelo.Params.TimeLimit = max(self.time_limit,self.time_limit - self.initial_solution_time)
+        self.modelo.Params.TimeLimit = self.time_limit - self.initial_solution_time
         self.optimize()
         self.modelo.update()
 

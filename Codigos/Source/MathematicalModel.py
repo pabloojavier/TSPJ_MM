@@ -218,7 +218,8 @@ class MathematicalModel(Problem):
                  new_formulation: bool = False,
                  time_limit : int = 7200,
                  new_m : bool = False,
-                 relax : bool = False
+                 relax : bool = False,
+                 mga : bool = False
                  ):
         """
         Initialize mathematical model with some default values
@@ -241,6 +242,7 @@ class MathematicalModel(Problem):
         self.new_m = new_m
         self.relax = relax
         self.new_formulation = new_formulation
+        self.mga = mga
         self.callback_dict = {"cut_integer_separation":MathematicalModel.CUT_integer_separation,
                               "cut_naive_fractional_separation":MathematicalModel.CUT_naive_fractional_separation,
                               "cut_smarter_fractional_separation":MathematicalModel.CUT_smarter_fractional_separation,
@@ -263,14 +265,14 @@ class MathematicalModel(Problem):
                               "both_blossom3":MathematicalModel.both_blossom_method3,
                               'custom':callback}
         if self.output:
-            print(f'running with: {self.size} {self.instance} {self.subtour} {self.initial_solution} {self.callback} {self.bounds} {self.new_formulation} {self.time_limit} {self.new_m}')
-        self.compute_new_M() if new_m else self.compute_M()
+            print(f'running with: {self.size} {self.instance} {self.subtour} {self.initial_solution} {self.callback} {self.bounds} {self.new_formulation} {self.time_limit} {self.new_m} {self.relax} {self.mga}')
         self.jobs = self.cities.copy()
         self.jobs_arch = [(i,k) for i in self.cities for k in self.cities]
-        self.heuristic_jobs = NNJA(self.lkh_route[1:],self.JT)
-        self.initial_fitness = self.fitness_functions([self.lkh_route[1:],self.heuristic_jobs])[0]
-        self.initial_solution_time = 0
-        
+        self.initial_solution_time = time.time()
+
+        self.create_initial_solution()
+
+        self.compute_new_M() if new_m else self.compute_M()
         self.jt_min = self.JT[self.JT>0].min()
 
     def compute_M(self):
@@ -293,7 +295,6 @@ class MathematicalModel(Problem):
 
     def compute_new_M(self):
         self.M = np.zeros((len(self.cities),len(self.cities)))
-        route_fitness = self.route_fitness(self.lkh_route[1:])
         self.sum_min_row = 0
         for j in range(1,len(self.cities)):
             self.M[0,j] = self.TT[0][j]
@@ -301,7 +302,23 @@ class MathematicalModel(Problem):
             self.sum_min_row += np.min(self.TT[i][np.nonzero(self.TT[i])])
             for j in range(len(self.cities)):
                 if i != j:
-                    self.M[i,j] = route_fitness + self.TT[i][j]
+                    self.M[i,j] = self.initial_route_fitness + self.TT[i][j]
+
+    def create_initial_solution(self):
+        self.initial_jobs = NNJA(self.initial_route[1:],self.JT) 
+        if self.mga:
+            from Source.MGA import MGA
+            mga = MGA(self.size,self.instance,seed = 0)
+            mga.parameters['TIMELIMIT'] = 100
+            mga.run()
+            mga_solution = mga.get_solution()
+            self.initial_route = [0]+mga_solution[0]
+            self.initial_jobs = mga_solution[1]
+
+        self.initial_fitness = self.fitness_functions([self.initial_route[1:],self.initial_jobs])[0]
+        self.initial_route_fitness = self.route_fitness(self.initial_route[1:])
+        self.initial_arch = sort_arch(self.initial_route)
+        self.initial_job_arch = sort_jobs(self.initial_route[1:],self.initial_jobs)
 
     def create_base_model(self):
         """
@@ -412,7 +429,7 @@ class MathematicalModel(Problem):
 
         for k in self.cities[1:self.n]: #16
             self.modelo.addConstr(gp.quicksum(self.t[(i,k)] for i in self.cities if i != k) 
-                                + gp.quicksum(self.TT[k][i]*self.x[(i,k)] for i in self.cities if i != k)
+                                + gp.quicksum(self.TT[i][k]*self.x[(i,k)] for i in self.cities if i != k)
                                 <= gp.quicksum(self.t[(k,l)] for l in self.cities if k != l) , name = f't_{k}')
 
         #parte desde 1, el primer nodo no tiene tiempo
@@ -426,7 +443,7 @@ class MathematicalModel(Problem):
         self.modelo.Params.Threads = 1
         #0=primal simplex, 1=dual simplex, 2=barrier, 3=concurrent, 4=deterministic concurrent
         self.modelo.setParam("Method",2) 
-        self.modelo.setParam("Cutoff",self.initial_fitness) 
+        
         self.modelo.update()
 
     def add_subtour_constraint(self):
@@ -1068,15 +1085,15 @@ class MathematicalModel(Problem):
             model._time_total_constraints += time.time()-initial_subtour
             return
         flag = True     
-        # if case2:
-        #     n = model._n
-        #     tour = sc.SEC(xval, 0.00001, n)
-        #     if len(tour) > 0:
-        #         tour2 = [i for i in range(n) if i not in tour]
-        #         model.cbLazy(gp.quicksum(model._xvars[i,j] for i in tour for j in tour2) >= 1)
-        #         model._n_subtour2_constraints += 1
-        #         flag = False
-        #     model._time_subtour2_constraints += time.time()-initial_subtour
+        if case2:
+            n = model._n
+            tour = sc.SEC(xval, 0.00001, n)
+            if len(tour) > 0:
+                tour2 = [i for i in range(n) if i not in tour]
+                model.cbLazy(gp.quicksum(model._xvars[i,j] for i in tour for j in tour2) >= 1)
+                model._n_subtour2_constraints += 1
+                flag = False
+            model._time_subtour2_constraints += time.time()-initial_subtour
         if flag:
             n = model._n
             tour = [i for i in range(n+1)]
@@ -1180,198 +1197,6 @@ class MathematicalModel(Problem):
         
         #En caso que no se agreguen restricciones, se aumenta el contador global
         model._time_total_constraints += time.time() - initial_subtour
-
-
-    @staticmethod
-    def both_blossom_method4(model:gp.Model, donde):
-        initial_subtour = time.time()
-        n = model._n
-        #case1 = donde == gp.GRB.Callback.MIPSOL
-        case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( model.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
-        
-        if case2:
-            xval = model.cbGetNodeRel(model._xvars)
-        else:
-            model._time_subtour1_constraints += time.time()-initial_subtour
-            model._time_subtour2_constraints += time.time()-initial_subtour
-            model._time_total_constraints += time.time()-initial_subtour
-            return
-        flag = True     
-        # if case2:
-        #     n = model._n
-        #     tour = sc.SEC(xval, 0.00001, n)
-        #     if len(tour) > 0:
-        #         tour2 = [i for i in range(n) if i not in tour]
-        #         model.cbLazy(gp.quicksum(model._xvars[i,j] for i in tour for j in tour2) >= 1)
-        #         model._n_subtour2_constraints += 1
-        #         flag = False
-        #     model._time_subtour2_constraints += time.time()-initial_subtour
-        if flag:
-            n = model._n
-            tour = [i for i in range(n+1)]
-            MathematicalModel.subtour_method(tour, xval, n)
-            
-            if len(tour) < n:
-                tour2 = [i for i in range(n) if i not in tour]
-                model.cbLazy(gp.quicksum(model._xvars[i, j] for i in tour for j in tour2) >= 1)
-                model._n_subtour1_constraints += 1
-                
-            model._time_subtour1_constraints += time.time()-initial_subtour
-
-        # Blossom inequalities
-        initial_heuristic_blossom = time.time()
-        W,T = heuristic_separation(xval,n)
-        # Se aumenta el contador de la separación heuristica
-        model._time_blossom_heuristic_constraints += time.time()-initial_heuristic_blossom
-        
-        #Revisa si un arco es incidente a un conjunto de nodos
-        condition = lambda e,V: (xval[e] > 0 and 
-                                (
-                                    (e[0] in V and e[1] not in V) or
-                                    (e[0] not in V and e[1] in V)
-                                ) and 
-                                e[0]<e[1])
-        condition2 = lambda e,V: (xval[e] > 0 and 
-                                (
-                                    (e[0] in V and e[1] not in V) or
-                                    (e[0] not in V and e[1] in V)
-                                ))
-
-        
-        if len(T) >= 3:
-            # print(W,T)
-            # izq2 = [e for e in xval if xval[e] > 0 and e[0] in W and e[1] in W and e[0]<e[1]]+['----']+T
-            # der2 = len(W)+sum([len(e) for e in T])-(3*len(T)+1)/2
-            # print('blossom2',len(izq2)-1,der2,'valid inequality' if not len(izq2)-1<=der2 else 'not a cutting plane',izq2,sep=';')
-
-            # izq4= [e for e in xval if condition(e,W)]+['----']+[e for e in xval if condition(e,[item for sublist in T for item in sublist])]
-            # der4 = 3*len(T)+1
-            # print('blossom4',len(izq4)-1,der4,'valid inequality' if len(izq4)-1<=der4 else 'not a cutting plane',izq4,sep=';')
-            # print(gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,W)] ))
-            # print(gp.quicksum(model._xvars[e] for e in [e for e in xval if condition2(e,[item for sublist in T for item in sublist])]))
-            # print(3*len(T)+1)
-            # exit(0)
-            """
-            REVISAR QUE LOS CORTES FUNCIONEN, el de >= 3t+1
-            ver los corte que agrega
-            verificar que sean validos 
-            """
-            model.cbLazy(gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,W)] )+ 
-                    gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,[item for sublist in T for item in sublist])])<=3*len(T)+1)
-            model._n_blossom_heuristic_constraints += 1
-            model._time_total_constraints += time.time() - initial_subtour
-            return
-        
-        initial_exact_blossom = time.time()
-        W,Fe = letchford_algorithm(model._G,xval)
-        # Se aumenta el contador de separación exacta
-        model._time_blossom_exact_constraints += time.time()-initial_exact_blossom
-        
-        if W != None and Fe != None:
-            model.cbLazy(gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,W)] )+ 
-                    gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,[item for sublist in Fe for item in sublist])])<=3*len(Fe)+1)
-            model._n_blossom_exact_constraints += 1
-            model._time_total_constraints += time.time() - initial_subtour
-            return
-        
-        #En caso que no se agreguen restricciones, se aumenta el contador global
-        model._time_total_constraints += time.time() - initial_subtour 
-
-        
-    @staticmethod
-    def both_blossom_method4(model:gp.Model, donde):
-        initial_subtour = time.time()
-        n = model._n
-        #case1 = donde == gp.GRB.Callback.MIPSOL
-        case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( model.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
-        
-        if case2:
-            xval = model.cbGetNodeRel(model._xvars)
-        else:
-            model._time_subtour1_constraints += time.time()-initial_subtour
-            model._time_subtour2_constraints += time.time()-initial_subtour
-            model._time_total_constraints += time.time()-initial_subtour
-            return
-        flag = True     
-        # if case2:
-        #     n = model._n
-        #     tour = sc.SEC(xval, 0.00001, n)
-        #     if len(tour) > 0:
-        #         tour2 = [i for i in range(n) if i not in tour]
-        #         model.cbLazy(gp.quicksum(model._xvars[i,j] for i in tour for j in tour2) >= 1)
-        #         model._n_subtour2_constraints += 1
-        #         flag = False
-        #     model._time_subtour2_constraints += time.time()-initial_subtour
-        if flag:
-            n = model._n
-            tour = [i for i in range(n+1)]
-            MathematicalModel.subtour_method(tour, xval, n)
-            
-            if len(tour) < n:
-                tour2 = [i for i in range(n) if i not in tour]
-                model.cbLazy(gp.quicksum(model._xvars[i, j] for i in tour for j in tour2) >= 1)
-                model._n_subtour1_constraints += 1
-                
-            model._time_subtour1_constraints += time.time()-initial_subtour
-
-        # Blossom inequalities
-        initial_heuristic_blossom = time.time()
-        W,T = heuristic_separation(xval,n)
-        # Se aumenta el contador de la separación heuristica
-        model._time_blossom_heuristic_constraints += time.time()-initial_heuristic_blossom
-        
-        #Revisa si un arco es incidente a un conjunto de nodos
-        condition = lambda e,V: (xval[e] > 0 and 
-                                (
-                                    (e[0] in V and e[1] not in V) or
-                                    (e[0] not in V and e[1] in V)
-                                ) and 
-                                e[0]<e[1])
-        condition2 = lambda e,V: (xval[e] > 0 and 
-                                (
-                                    (e[0] in V and e[1] not in V) or
-                                    (e[0] not in V and e[1] in V)
-                                ))
-
-        
-        if len(T) >= 3:
-            # print(W,T)
-            # izq2 = [e for e in xval if xval[e] > 0 and e[0] in W and e[1] in W and e[0]<e[1]]+['----']+T
-            # der2 = len(W)+sum([len(e) for e in T])-(3*len(T)+1)/2
-            # print('blossom2',len(izq2)-1,der2,'valid inequality' if not len(izq2)-1<=der2 else 'not a cutting plane',izq2,sep=';')
-
-            # izq4= [e for e in xval if condition(e,W)]+['----']+[e for e in xval if condition(e,[item for sublist in T for item in sublist])]
-            # der4 = 3*len(T)+1
-            # print('blossom4',len(izq4)-1,der4,'valid inequality' if len(izq4)-1<=der4 else 'not a cutting plane',izq4,sep=';')
-            # print(gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,W)] ))
-            # print(gp.quicksum(model._xvars[e] for e in [e for e in xval if condition2(e,[item for sublist in T for item in sublist])]))
-            # print(3*len(T)+1)
-            # exit(0)
-            """
-            REVISAR QUE LOS CORTES FUNCIONEN, el de >= 3t+1
-            ver los corte que agrega
-            verificar que sean validos 
-            """
-            model.cbLazy(gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,W)] )+ 
-                    gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,[item for sublist in T for item in sublist])])<=3*len(T)+1)
-            model._n_blossom_heuristic_constraints += 1
-            model._time_total_constraints += time.time() - initial_subtour
-            return
-        
-        initial_exact_blossom = time.time()
-        W,Fe = letchford_algorithm(model._G,xval)
-        # Se aumenta el contador de separación exacta
-        model._time_blossom_exact_constraints += time.time()-initial_exact_blossom
-        
-        if W != None and Fe != None:
-            model.cbLazy(gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,W)] )+ 
-                    gp.quicksum(model._xvars[e] for e in [e for e in xval if condition(e,[item for sublist in Fe for item in sublist])])<=3*len(Fe)+1)
-            model._n_blossom_exact_constraints += 1
-            model._time_total_constraints += time.time() - initial_subtour
-            return
-        
-        #En caso que no se agreguen restricciones, se aumenta el contador global
-        model._time_total_constraints += time.time() - initial_subtour 
 
     @staticmethod
     def exact_blossom_method(model:gp.Model, donde):
@@ -1541,12 +1366,11 @@ class MathematicalModel(Problem):
         Add new constraints, builts in this work.
         """
         
-        route_fitness = self.route_fitness(self.lkh_route[1:])
         menor_arco_depot = min(self.TT[0][i] for i in range(1,self.n))
         
         if hasattr(self,'TS'):
             for i in self.cities:
-                self.modelo.addConstr(self.TS[i] <= route_fitness , name = f'bounds1_TS_{i}')
+                self.modelo.addConstr(self.TS[i] <= self.initial_route_fitness , name = f'bounds1_TS_{i}')
 
             for i in range(1,self.n):
                 self.modelo.addConstr(self.TS[i] >= menor_arco_depot , name = f'bounds2_TS_{i}') 
@@ -1556,7 +1380,7 @@ class MathematicalModel(Problem):
                 LB = np.min(self.TT[i][np.nonzero(self.TT[i])])
                 for j in self.cities:
                     if i!=j:
-                        self.modelo.addConstr(self.t[(i,j)] <= route_fitness * self.x[(i,j)], name = f'bounds1_t_{i}_{j}')            
+                        self.modelo.addConstr(self.t[(i,j)] <= self.initial_route_fitness * self.x[(i,j)], name = f'bounds1_t_{i}_{j}')            
                         #self.modelo.addConstr(self.t[(i,j)] <= route_fitness, name = f'bounds1_t_{i}_{j}')                     
                     if i!=j and i>0:
                         self.modelo.addConstr(self.t[(i,j)] >= LB*self.x[(i,j)] , name = f'bouns3_t_{i}_{j}')
@@ -1584,12 +1408,7 @@ class MathematicalModel(Problem):
         """
         Add initial solution to MILP from LKH and NNJA
         """
-        self.initial_solution_time = time.time()
-        self.initial_arch = sort_arch(self.lkh_route)
-        if self.heuristic_jobs is None:
-            self.heuristic_jobs = NNJA(self.lkh_route[1:],self.JT) 
-        self.initial_job_arch = sort_jobs(self.lkh_route[1:],self.heuristic_jobs)
-        
+
         self.modelo.NumStart = 1
         self.modelo.update()
         for s in range(self.modelo.NumStart):
@@ -1606,6 +1425,7 @@ class MathematicalModel(Problem):
                     if arch_name in self.initial_job_arch:
                         var.Start = 1
         self.initial_solution_time = time.time()-self.initial_solution_time
+        self.modelo.setParam("Cutoff",self.initial_fitness) 
         self.modelo.update()
 
     def optimize(self):
@@ -1648,7 +1468,7 @@ class MathematicalModel(Problem):
         if self.initial_solution:
             self.add_initial_solution()
 
-        self.modelo.Params.TimeLimit = self.time_limit - self.initial_solution_time
+        self.modelo.Params.TimeLimit = max(self.time_limit,self.time_limit - self.initial_solution_time)
         self.optimize()
         self.modelo.update()
 
@@ -1658,6 +1478,7 @@ class MathematicalModel(Problem):
             lower = self.modelo.ObjBoundC
         except AttributeError:
             lower = self.modelo.ObjBound
+
         objective = float("inf")
         gap =  float("inf")
         if self.modelo.Status == GRB.OPTIMAL or self.modelo.SolCount > 0:
@@ -1681,7 +1502,8 @@ class MathematicalModel(Problem):
         time_heuristic_blossom = round(self.modelo._time_blossom_heuristic_constraints,4)
         time_exact_blossom = round(self.modelo._time_blossom_exact_constraints,4)
         time_total_callback = round(self.modelo._time_total_constraints,4)
-
+        if dict_status[self.modelo.Status] == 'OPTIMAL':
+            gap = 0
 
         lower = round(lower,2)
         print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}".format(

@@ -4,8 +4,8 @@ import sys
 argv = sys.argv[1:]
 opts = [(argv[2*i],argv[2*i+1]) for i in range(int(len(argv)/2))]
 
-size = "tsplib"
-instance = "gr17"
+size = "transitional"
+instance = 93
 seed = 0
 P_RPT = 0.236 #0.1       
 P_NNH = 0.112 #0.5 
@@ -29,7 +29,7 @@ CXPB = 0.327  #0.9
 MUTPB = 0.717  #0.2
 IT = 500 #500
 TOURN = 2 #4s
-TIMELIMIT = 1800
+TIMELIMIT = 10
 
 for i in range(len(opts)):
     if opts[i][0][1:] == "size":  size  = opts[i][1]
@@ -63,15 +63,15 @@ for i in range(len(opts)):
     elif opts[i][0][1:] == "TOURN": TOURN  = int(opts[i][1])
     elif opts[i][0][1:] == "TIMELIMIT": TIMELIMIT  = int(opts[i][1])
 
-parameters_value = {"P_OX": P_OX, "P_PMX": P_PMX, "P_UPMX": P_UPMX,  #Cruzamiento
+parameters_value = {"P_OX": P_OX, "P_PMX": P_PMX, "P_UMPX": P_UPMX,  #Cruzamiento
                     "P_NNH": P_NNH, "P_TSP": P_TSP, "P_RPT": P_RPT, "P_NNHJ": P_NNHJ, "P_RPJ": P_RPJ,  #Población inicial
                     "MS1": MS1, "MS2": MS2, "P_EM": P_EM, "P_RM": P_RM, "P_SM": P_SM, "P_2OPT": P_2OPT, "P_JLS": P_JLS,"P_JEM":P_JEM, #Mutación
                     "POPULATION":POBLACION , "CXPB":CXPB, "MUTPB":MUTPB, "IT": IT , "ELITE": ELITE, "TOURN":TOURN, "CXPB":CXPB,"MUTPB":MUTPB,"TIMELIMIT":TIMELIMIT} #Overall 
 
 mga = MGA(size,instance,seed = seed)
-mga.parameters_value = parameters_value
+mga.parameters = parameters_value
 mga.compare = True
 mga.run()
-mga.print_results()
+# mga.print_results()
 #print(mga.get_solution())
 #print(mga.fitness_functions(mga.get_solution()))

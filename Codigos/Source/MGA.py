@@ -20,6 +20,22 @@ from typing import Dict, List, Callable, Any
 from Source.Problem import Problem
 from Source.MathematicalModel import MathematicalModel as MM
 
+def NNJA(route:list,JT):
+    """
+    Neares Neighbor Algorithm for Job Assignment. From the last node of the tour assigns
+    the cheapest job available. Then in the next node assing the cheapest job availabe 
+    and so on until the first node
+    """
+    job = []
+    n = len(route)  
+    cont = len(route)-1
+    while len(job)<n:
+        times = {(i,route[cont]):JT[route[cont]][i] for i in range(1,n+1)}
+        new = min(times.items(),key=lambda x:x[1]) 
+        job.append(new[0][1])
+        cont -= 1
+    return job
+
 class MGA(Problem):
     """
     To run it:
@@ -55,7 +71,7 @@ class MGA(Problem):
                           "MUTPB"      : 0.717,  #0.2
                           "IT"         : 500, #500
                           "TOURN"      : 2, #4s
-                          "TIMELIMIT"  : 1800
+                          "TIMELIMIT"  : 10
                           }
         self.g = 0
         self.best_iteration = 0 
@@ -162,6 +178,7 @@ class MGA(Problem):
                     route = self.TSPGurobi(n,2000)
                 else:
                     route = self.get_lkh_route()
+                    route.remove(0)
                 self.gurobi_route=route.copy()
                 self.FlagRoute=True
             else:
@@ -179,7 +196,7 @@ class MGA(Problem):
             jobs = [i for i in range(1,n+1)]
             random.shuffle(jobs)
         else:
-            jobs = MM.NNJA(route,self.JT)
+            jobs = NNJA(route,self.JT)
         return jobs
 
     def initial_population(self):

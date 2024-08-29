@@ -16,11 +16,13 @@ if os.getcwd().split("/")[-1] != "Codigos":
 else:
     path = ""
 
+instances_set = ['small','medium','large','transitional']
+
 class Problem:
     def __init__(self,size,instance):
         self.size :str = size.lower()
         self.instance : str = instance
-        self.batch = (int(self.instance)-1)//25+1 if self.size in ["small","medium","large","transitional"] else ""
+        self.batch = (int(self.instance)-1)//25+1 if self.size in instances_set else ""
         
         self.path = path
         self.__parameters()
@@ -34,7 +36,7 @@ class Problem:
             # self.coords = pd.read_csv(location+"coords_"+self.instance+".csv",index_col= None, header = None).fillna(0).to_numpy()
             self.coords = None
 
-        elif self.size in ("small","medium","large","transitional"):
+        elif self.size in instances_set:
             location = self.path+"Data/"+str(self.size.capitalize())+"_problems/Batch_0"+str(self.batch)+"/TSPJ_"+str(self.instance)+self.size.capitalize()[0]
             self.TT = pd.read_csv(location+"_cost_table_by_coordinates.csv"    ,index_col= None, header = None).fillna(0).to_numpy()
             self.JT = pd.read_csv(location+"_tasktime_table.csv"               ,index_col= None, header = None).fillna(0).to_numpy()
@@ -79,22 +81,23 @@ class Problem:
 
 
     def __solve_lkh(self):
-        if self.size in ("small","medium","large"):
+        if self.size in instances_set:
             instance_location = self.path+"Data/"+str(self.size.capitalize())+"_problems/Batch_0"+str(self.batch)+"/TSPJ_"+str(self.instance)+self.size.capitalize()[0]+"_cost_table_by_coordinates.csv"
         elif self.size == "tsplib":
             instance_location = self.path+f"Data/Tsplib_problems/TT_{self.instance}.csv"
         else:
-            self.lkh_route = [i for i in range(self.n)]
+            self.initial_route = [i for i in range(self.n)]
+            print("WARNING! LKH is not available for this problem, using sequential route")
             return
 
         problem = tsplib95.parse(self.__transform_txt(instance_location))
         solver_path = self.path+'LKH-3.0.7/LKH'
 
         ciudad = lkh.solve(solver_path, problem=problem, max_trials=10000, runs=1)[0]
-        self.lkh_route =  [i-1 for i in ciudad]
+        self.initial_route =  [i-1 for i in ciudad]
 
     def get_lkh_route(self):
-        return self.lkh_route
+        return self.initial_route
     
     def fitness_functions(self,solution:Tuple[List,List]):
         """

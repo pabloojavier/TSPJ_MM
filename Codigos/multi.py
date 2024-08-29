@@ -10,11 +10,11 @@ def launcherMGA(seed,size,_instancia,**kwargs):
         ejecutar += f"-{key} {value} "
     os.system(ejecutar)
 
-def launcherMILP(size,instance,subtour,solin,output,callback,bounds,_new_formulation,_newm,_relax):
-    os.system(f"/usr/local/bin/python3 {path}MM_poo.py -size {size} -instance {instance} -subtour {subtour} -initialsol {solin} -output {output} -callback {callback} -bounds {bounds} -newformulation {_new_formulation} -newm {_newm} -relax {_relax}")
+def launcherMILP(size,instance,subtour,solin,output,callback,bounds,_new_formulation,_newm,_relax,_mga):
+    os.system(f"/usr/local/bin/python3 {path}MM_poo.py -size {size} -instance {instance} -subtour {subtour} -initialsol {solin} -output {output} -callback {callback} -bounds {bounds} -newformulation {_new_formulation} -newm {_newm} -relax {_relax} -mga {_mga}")
 
 def set_parameters(argv):
-    global paralelo,size,alg,subtour,bounds,initialsol,callback,new_formulation,newm,relax, P_OX, P_PMX, P_UPMX, P_NNH, P_TSP, P_RPT, P_NNHJ, P_RPJ, MS1, MS2, P_EM, P_RM, P_SM, P_2OPT, P_JLS, P_JEM, ELITE, POBLACION, CXPB, MUTPB, IT, TOURN, TIMELIMIT,parameters_value
+    global paralelo,size,alg,subtour,bounds,initialsol,callback,new_formulation,newm,relax,mga, P_OX, P_PMX, P_UPMX, P_NNH, P_TSP, P_RPT, P_NNHJ, P_RPJ, MS1, MS2, P_EM, P_RM, P_SM, P_2OPT, P_JLS, P_JEM, ELITE, POBLACION, CXPB, MUTPB, IT, TOURN, TIMELIMIT,parameters_value
     paralelo = "sequential"
     size = "tsplib"
     alg = "gurobi"
@@ -25,6 +25,7 @@ def set_parameters(argv):
     new_formulation = 'True'
     newm = 'True'
     relax = 'False'
+    mga = "False"
     P_RPT = 0.236 #0.1       
     P_NNH = 0.112 #0.5 
     P_TSP = 0.652 #0.4
@@ -52,7 +53,7 @@ def set_parameters(argv):
     opts = [(argv[2*i],argv[2*i+1]) for i in range(int(len(argv)/2))]
 
     if len(opts)<3:
-        print("multi.py -p <parallel/sequential> -size <tsplib/small/medium/large/all> -alg <mga/gurobi> -subtour <wc/gg/mtz/dl> -initialsol <True/False> -callback <*callbacklist*> -bounds <True/False> -newm <True/False> -relax <True/False>"  )
+        print("multi.py -p <parallel/sequential> -size <tsplib/small/medium/large/transitional> -alg <mga/gurobi> -subtour <wc/gg/mtz/dl> -initialsol <True/False> -callback <*callbacklist*> -bounds <True/False> -newm <True/False> -relax <True/False> -mga <True/False>"  )
         raise ValueError("Error, faltan parametros")
 
     if len(argv)%2 != 0:
@@ -64,11 +65,12 @@ def set_parameters(argv):
         elif opts[i][0][1:] == "alg": alg = str(opts[i][1]).lower()
         elif opts[i][0][1:] == "subtour": subtour = str(opts[i][1]).lower()
         elif opts[i][0][1:] == "initialsol": initialsol = str(opts[i][1]).lower()
-        elif opts[i][0][1:] == "callback": callback = str(opts[i][1])
+        elif opts[i][0][1:] == "callback": callback = str(opts[i][1]).lower()
         elif opts[i][0][1:] == "bounds": bounds = str(opts[i][1]).lower()
         elif opts[i][0][1:] == "newformulation": new_formulation = str(opts[i][1]).lower()
         elif opts[i][0][1:] == "newm": newm = str(opts[i][1]).lower()
         elif opts[i][0][1:] == "relax": relax = str(opts[i][1]).lower()
+        elif opts[i][0][1:] == "mga": mga = str(opts[i][1]).lower()
         elif opts[i][0][1:] == "OX"   : P_OX    =  float(opts[i][1])
         elif opts[i][0][1:] == "PMX"  : P_PMX   =  float(opts[i][1])  
         elif opts[i][0][1:] == "UMPX" : P_UPMX  =  float(opts[i][1])    
@@ -92,23 +94,23 @@ def set_parameters(argv):
         elif opts[i][0][1:] == "ELITE": ELITE  = float(opts[i][1])
         elif opts[i][0][1:] == "TOURN": TOURN  = int(opts[i][1])
         elif opts[i][0][1:] == "TIMELIMIT": TIMELIMIT  = int(opts[i][1])
-        else:
-            print(f"Parameter :'{opts[i][0][1:]}' unknown")
-            print("Execute with: python3.9 multi.py -p <parallel/sequential> -size <tsplib/Small/Medium/Large>")
-            print("Parameter list:")
-            for i in [["p",'size','alg','subtour','initialsol','callback','bounds','newformulation','newm','relax'],
-                      ["P_OX","P_PMX","P_UPMX"],
-                      ["P_NNH","P_TSP","P_RPT","P_NNHJ","P_RPJ"],
-                      ["MS1","MS2","P_EM","P_RM","P_SM","P_2OPT","P_JLS","P_JEM"],
-                      ["POB","CXPB","MUTPB","IT","ELITE","TOURN"]]:
-                print("\t",i)
-            raise ValueError(f"Parameter :'{opts[i][0]}' unknown")
+    #     else:
+    #         print(f"Parameter :'{opts[i][0][1:]}' unknown")
+    #         print("Execute with: python3.9 multi.py -p <parallel/sequential> -size <tsplib/Small/Medium/Large/Transitional>")
+    #         print("Parameter list:")
+    #         for i in [["p",'size','alg','subtour','initialsol','callback','bounds','newformulation','newm','relax'],
+    #                   ["P_OX","P_PMX","P_UPMX"],
+    #                   ["P_NNH","P_TSP","P_RPT","P_NNHJ","P_RPJ"],
+    #                   ["MS1","MS2","P_EM","P_RM","P_SM","P_2OPT","P_JLS","P_JEM"],
+    #                   ["POB","CXPB","MUTPB","IT","ELITE","TOURN"]]:
+    #             print("\t",i)
+    #         raise ValueError(f"Parameter :'{opts[i][0]}' unknown")
 
-    if (    size     not in ["tsplib","small","medium","large"] 
-        or  paralelo not in ["parallel","sequential"] 
-        or  alg      not in ["mga","gurobi"] 
-        or (alg == "gurobi" and (subtour not in ("wc","gg","mtz","dl","dl_real")))):
-        raise ValueError(f"Error, parametro desconocido ({size}/{paralelo}/{alg}/{subtour}))")
+    # if (    size     not in ["tsplib","small","medium","large","transitional"] 
+    #     or  paralelo not in ["parallel","sequential"] 
+    #     or  alg      not in ["mga","gurobi"] 
+    #     or (alg == "gurobi" and (subtour not in ("wc","gg","mtz","dl","dl_real")))):
+    #     raise ValueError(f"Error, parametro desconocido ({size}/{paralelo}/{alg}/{subtour}))")
 
     parameters_value = {"P_OX": P_OX, "P_PMX": P_PMX, "P_UPMX": P_UPMX,  #Cruzamiento
                         "P_NNH": P_NNH, "P_TSP": P_TSP, "P_RPT": P_RPT, "P_NNHJ": P_NNHJ, "P_RPJ": P_RPJ,  #Población inicial
@@ -127,28 +129,30 @@ instance_dict = {"tsplib":tsplib,
                  "small":sml_instance,
                  "medium":sml_instance,
                  "large":sml_instance,
-                 "all":tsplib+sml_instance+sml_instance+sml_instance}
+                 "transitional":sml_instance}
 
 
+argv = ["-p"              , "parallel",
+        "-size"           , "medium",
+        "-alg"            , "gurobi",
+        "-subtour"        , "gg",
+        "-initialsol"     , "True",
+        "-callback"       , "none",
+        "-bounds"         , "False",
+        "-newformulation" , "False",
+        "-newm"           , "False",
+        "-relax"          , "True",
+        "-mga"            , "False" ]
 
-# argv = ["-p"              , "sequential",
-#         "-size"           , "small",
-#         "-alg"            , "gurobi",
-#         "-subtour"        , "dl",
-#         "-initialsol"     , "False",
-#         "-callback"       , "none",
-#         "-bounds"         , "False",
-#         "-newformulation" , "False",
-#         "-newm"           , "False",
-#         "-relax"          , "False",]
 
-argv = sys.argv[1:]
+# argv = sys.argv[1:]
+# for argv in [argv3,argv4]:
 set_parameters(argv)
 
 if __name__ == "__main__":
     seed = [i for i in range(10)]
     pool = multiprocessing.Pool(processes=max(1, multiprocessing.cpu_count()-2))
-    print(f"Running with parameters: {[i for i in argv]} ")
+    # print(f"Running with parameters: {[i for i in argv]} ")
     if alg == "mga":
         print("{:<6}{:<8}{:<12}{:<12}{:<10}{:<10}{:<10}{:<10}{:<12}{:<12}".format("seed","size","instance","mejor","pob","time","mejor_initi","pob_i","mejor_iter","t_pob"))
         for _instancia,_seed in itertools.product(instance_dict[size],seed):
@@ -157,20 +161,12 @@ if __name__ == "__main__":
             elif paralelo == "sequential":
                 launcherMGA(_seed,size,_instancia,**parameters_value)
     else:
-        print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}".format("size","instance","obj","lb","gap","time","status","NodeCount","#callback","timecallback"))
+        # print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}".format("size","instance","obj","lb","gap","time","status","NodeCount","t_sec1","t_sec2","t_heur","t_exact","t_total","#sec1","#sec2","#heur","#exact"))
         for k,_instance in enumerate(instance_dict[size]):
-            if size == 'all' and k < 10:
-                size_ = "tsplib"
-            elif size == 'all' and k < 110:
-                size_ = "small"
-            elif size == 'all' and k < 210:
-                size_ = "medium"
-            else:
-                size_ = "large"
             if paralelo == "parallel":
-                pool.apply_async(launcherMILP, args=(size_,_instance,subtour,initialsol,"False",callback,bounds,new_formulation,newm,relax))
+                pool.apply_async(launcherMILP, args=(size,_instance,subtour,initialsol,"False",callback,bounds,new_formulation,newm,relax,mga))
             elif paralelo == "sequential":
-                launcherMILP(size_,_instance,subtour,initialsol,"False",callback,bounds,new_formulation,newm,relax)
+                launcherMILP(size,_instance,subtour,initialsol,"False",callback,bounds,new_formulation,newm,relax,mga)
     
     if paralelo == "parallel":
         pool.close()

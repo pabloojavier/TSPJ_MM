@@ -11,7 +11,7 @@ import time
 import re
 import math
 import matplotlib.pyplot as plt
-# import lib.sec as sc
+import lib.sec as sc
 
 warnings.filterwarnings("ignore")
 
@@ -271,6 +271,7 @@ class MathematicalModel(Problem):
         self.initial_solution_time = time.time()
 
         self.create_initial_solution()
+        self.initial_solution_time = time.time() - self.initial_solution_time
 
         self.compute_new_M() if new_m else self.compute_M()
         self.jt_min = self.JT[self.JT>0].min()
@@ -339,6 +340,9 @@ class MathematicalModel(Problem):
         self.modelo._time_blossom_exact_constraints = 0     #Time for exact constraints
         self.modelo._time_total_constraints = 0             #Total time for constraints
 
+        self.modelo._simplex_lower_bound = 1e-9
+        self.modelo._relax = self.relax
+
         self.Cmax = self.modelo.addVar(vtype=GRB.CONTINUOUS,name="Cmax")
 
         var_mode = GRB.CONTINUOUS if self.relax else GRB.BINARY
@@ -395,6 +399,9 @@ class MathematicalModel(Problem):
         self.modelo._time_blossom_heuristic_constraints = 0 #Time for heuristic constraints
         self.modelo._time_blossom_exact_constraints = 0     #Time for exact constraints
         self.modelo._time_total_constraints = 0             #Total time for constraints
+
+        self.modelo._simplex_lower_bound = 1e-9
+        self.modelo._relax = self.relax
 
         self.Cmax = self.modelo.addVar(vtype=GRB.CONTINUOUS,name="Cmax")
 
@@ -495,6 +502,9 @@ class MathematicalModel(Problem):
         initial = time.time()
         n = modelo._n
 
+        if donde == gp.GRB.Callback.SIMPLEX:
+            modelo._simplex_lower_bound = modelo.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+
         if donde == GRB.Callback.MIPNODE  and ( modelo.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL):
             valoresX = modelo.cbGetNodeRel(modelo._xvars)
             tour = [i for i in range(n+1)]
@@ -529,6 +539,10 @@ class MathematicalModel(Problem):
     def CUT_integer_separation(m:gp.Model, where):
         initial = time.time()
         # check if LP relaxation at this branch-and-bound node has an integer solution
+        
+        if where == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+
         if where == GRB.Callback.MIPSOL: 
             
             # retrieve the LP solution
@@ -561,6 +575,9 @@ class MathematicalModel(Problem):
         case1 = where == GRB.Callback.MIPSOL
         case2 = ( where == GRB.Callback.MIPNODE ) and ( m.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL )
         
+        if where == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+
         if not case1 and not case2:
             m._time_subtour1_constraints += time.time()-initial
             m._time_total_constraints += time.time()-initial
@@ -604,6 +621,9 @@ class MathematicalModel(Problem):
         #    1. We encounter an integer point that might replace our incumbent
         #    2. We encounter a fractional point *that is LP optimal*
         #
+
+        if where == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
         n = m._n
         case1 = where == GRB.Callback.MIPSOL
         case2 = ( where == GRB.Callback.MIPNODE ) and ( m.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL )
@@ -654,6 +674,9 @@ class MathematicalModel(Problem):
     @staticmethod
     def DFJ_integer_separation(m:gp.Model, where):
         initial = time.time()
+        if where == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+        
         # check if LP relaxation at this branch-and-bound node has an integer solution
         if where == GRB.Callback.MIPSOL: 
             
@@ -687,6 +710,9 @@ class MathematicalModel(Problem):
         case1 = where == GRB.Callback.MIPSOL
         case2 = ( where == GRB.Callback.MIPNODE ) and ( m.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL )
         
+        if where == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+
         if not case1 and not case2:
             # m._callback_time += time.time()-initial
             m._time_subtour1_constraints += time.time()-initial
@@ -730,6 +756,9 @@ class MathematicalModel(Problem):
         case1 = where == GRB.Callback.MIPSOL
         case2 = ( where == GRB.Callback.MIPNODE ) and ( m.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL )
         
+        if where == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+
         if not case1 and not case2:
             # m._callback_time += time.time()-initial
             m._time_subtour1_constraints += time.time()-initial
@@ -793,6 +822,8 @@ class MathematicalModel(Problem):
     def subtourelim1(modelo:gp.Model, donde):
         initial = time.time()
         n = modelo._n
+        if donde == gp.GRB.Callback.SIMPLEX:
+            modelo._simplex_lower_bound = modelo.cbGet(gp.GRB.Callback.SPX_OBJVAL)
 
         if donde == GRB.Callback.MIPNODE  and ( modelo.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL):
             valoresX = modelo.cbGetNodeRel(modelo._xvars)
@@ -812,7 +843,9 @@ class MathematicalModel(Problem):
     def subtourelim2(modelo:gp.Model, donde):        
         initial = time.time()
         n = modelo._n
-
+        if donde == gp.GRB.Callback.SIMPLEX:
+            modelo._simplex_lower_bound = modelo.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+        
         if donde == GRB.Callback.MIPNODE  and ( modelo.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL):
             valoresX = modelo.cbGetNodeRel(modelo._xvars)
             tour = [i for i in range(n+1)]
@@ -844,7 +877,8 @@ class MathematicalModel(Problem):
     def subtourelim3(m:gp.Model, where):
         initial = time.time()
         case2 = (where == GRB.Callback.MIPNODE) and (m.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL)
-        
+        if where == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
         # obtains the LP solution
         if case2:
             xval = m.cbGetNodeRel(m._xvars)
@@ -867,7 +901,8 @@ class MathematicalModel(Problem):
         initial = time.time()
         case1 = where == GRB.Callback.MIPSOL
         case2 = (where == GRB.Callback.MIPNODE) and (m.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL)
-        
+        if where == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
         if not case1 and not case2:
             m._time_subtour1_constraints += time.time()-initial
             m._time_subtour2_constraints += time.time()-initial
@@ -907,6 +942,8 @@ class MathematicalModel(Problem):
     def subtourelim5(m:gp.Model, where):
         case1 = where == GRB.Callback.MIPSOL
         case2 = (where == GRB.Callback.MIPNODE) and (m.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL)
+        if where == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
         initial = time.time()
         # obtains the LP solution
         if case1:
@@ -946,6 +983,8 @@ class MathematicalModel(Problem):
     def subtourelim6(m:gp.Model, where):
         #case1 = where == GRB.Callback.MIPSOL
         case2 = (where == GRB.Callback.MIPNODE) and (m.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL)
+        if where == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
         initial = time.time()
         # obtains the LP solution
         if case2:
@@ -983,6 +1022,8 @@ class MathematicalModel(Problem):
     def subtourelim7(m:gp.Model, where):
         #case1 = where == GRB.Callback.MIPSOL
         case2 = (where == GRB.Callback.MIPNODE) and (m.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL)
+        if where == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
         initial = time.time()
         # obtains the LP solution
         if case2:
@@ -1022,6 +1063,9 @@ class MathematicalModel(Problem):
         n = model._n
         case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( model.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
         
+        if donde == gp.GRB.Callback.SIMPLEX:
+            model._simplex_lower_bound = model.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+
         if not case2:
             # En caso de que no cumpla ninguna condición, el tiempo se agrega a todos los contadores
             model._time_subtour1_constraints += time.time()-initial_subtour
@@ -1074,9 +1118,11 @@ class MathematicalModel(Problem):
     def both_blossom_method2(model:gp.Model, donde):
         initial_subtour = time.time()
         n = model._n
-        #case1 = donde == gp.GRB.Callback.MIPSOL
         case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( model.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
         
+        if donde == gp.GRB.Callback.SIMPLEX:
+            model._simplex_lower_bound = model.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+
         if case2:
             xval = model.cbGetNodeRel(model._xvars)
         else:
@@ -1141,6 +1187,9 @@ class MathematicalModel(Problem):
         #case1 = donde == gp.GRB.Callback.MIPSOL
         case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( model.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
         
+        if donde == gp.GRB.Callback.SIMPLEX:
+            model._simplex_lower_bound = model.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+
         if case2:
             xval = model.cbGetNodeRel(model._xvars)
         else:
@@ -1205,6 +1254,9 @@ class MathematicalModel(Problem):
         #case1 = donde == gp.GRB.Callback.MIPSOL
         case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( model.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
         
+        if donde == gp.GRB.Callback.SIMPLEX:
+            model._simplex_lower_bound = model.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+
         if not case2:
             model._time_subtour1_constraints += time.time()-initial_subtour
             model._time_blossom_exact_constraints += time.time()-initial_subtour
@@ -1240,6 +1292,9 @@ class MathematicalModel(Problem):
         #case1 = donde == gp.GRB.Callback.MIPSOL
         case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( m.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
         
+        if donde == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+
         if case2:
             xval = m.cbGetNodeRel(m._xvars)
         else:
@@ -1286,6 +1341,9 @@ class MathematicalModel(Problem):
         #case1 = donde == gp.GRB.Callback.MIPSOL
         case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( model.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
         
+        if donde == gp.GRB.Callback.SIMPLEX:
+            model._simplex_lower_bound = model.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+
         if not case2:
             model._time_subtour1_constraints += time.time()-initial_subtour
             model._time_blossom_heuristic_constraints += time.time()-initial_subtour
@@ -1321,7 +1379,8 @@ class MathematicalModel(Problem):
         n = m._n
         #case1 = donde == gp.GRB.Callback.MIPSOL
         case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( m.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
-        
+        if donde == gp.GRB.Callback.SIMPLEX:
+            m._simplex_lower_bound = m.cbGet(gp.GRB.Callback.SPX_OBJVAL)
         if case2:
             xval = m.cbGetNodeRel(m._xvars)
         else:
@@ -1360,7 +1419,15 @@ class MathematicalModel(Problem):
             m._n_blossom_heuristic_constraints += 1
             
         m._time_total_constraints += time.time() - initial_subtour
-                            
+
+    @staticmethod
+    def get_lower_bound_callback(modelo:gp.Model, donde):
+        
+        if donde == gp.GRB.Callback.SIMPLEX:
+            modelo._simplex_lower_bound = modelo.cbGet(gp.GRB.Callback.SPX_OBJVAL)
+
+
+            
     def add_new_constraint(self):
         """
         Add new constraints, builts in this work.
@@ -1424,14 +1491,13 @@ class MathematicalModel(Problem):
                     arch_name = tuple(var.varName.split("[")[1][:-1].split(","))
                     if arch_name in self.initial_job_arch:
                         var.Start = 1
-        self.initial_solution_time = time.time()-self.initial_solution_time
         self.modelo.setParam("Cutoff",self.initial_fitness) 
         self.modelo.update()
 
     def optimize(self):
         self.modelo.update()
         if self.callback in ("none",None) :
-            self.modelo.optimize()
+            self.modelo.optimize(MathematicalModel.get_lower_bound_callback)
         elif self.callback in self.callback_dict.keys():
             self.modelo.Params.LazyConstraints = 1
             self.modelo._xvars = self.x
@@ -1465,22 +1531,71 @@ class MathematicalModel(Problem):
         if self.bounds:
             self.add_new_constraint()
         
-        if self.initial_solution:
+        if self.initial_solution:# == True and self.relax == False:
             self.add_initial_solution()
 
         self.modelo.Params.TimeLimit = max(self.time_limit,self.time_limit - self.initial_solution_time)
         self.optimize()
         self.modelo.update()
 
+    def get_integer_results(self):
+        if self.modelo.Status == GRB.OPTIMAL or self.modelo.SolCount > 0:
+            objective = round(self.modelo.ObjVal, 2)
+            lower = round(self.modelo.ObjBound, 4)
+            gap = round(self.modelo.MIPGap * 100, 2)
+        else:
+            objective = round(getattr(self.modelo, 'ObjVal', self.initial_fitness), 2)
+            lower = round(getattr(self.modelo, 'ObjBound', self.modelo.ObjBoundC), 4)
+            gap = round((objective - lower) / lower * 100, 4)
+
+        return objective, lower, gap
+
+    def get_lb_results(self):
+        if self.modelo.Status == GRB.OPTIMAL or self.modelo.SolCount > 0:
+            lower = round(self.modelo.ObjBound, 4)
+        else:
+            lower = round(getattr(self.modelo, 'ObjBound', self.modelo._simplex_lower_bound), 4)
+        
+        objective = round(self.modelo.ObjVal, 2)
+        gap = round((objective - lower) / lower * 100, 4)
+
+        return objective, lower, gap
+
     def print_results(self):
+        objective, lower, gap = self.get_lb_results() if self.relax else self.get_integer_results()
+
+        dict_status = {
+            1: 'LOADED', 2: 'OPTIMAL', 3: 'INFEASIBLE', 4: 'INF_OR_UNBD',
+            5: 'UNBOUNDED', 6: 'CUTOFF', 7: 'ITERATION_LIMIT', 8: 'NODE_LIMIT',
+            9: 'TIME_LIMIT', 10: 'SOLUTION_LIMIT', 11: 'INTERRUPTED', 12: 'NUMERIC',
+            13: 'SUBOPTIMAL', 14: 'INPROGRESS', 15: 'USER_OBJ_LIMIT'
+        }
+        
+        time = round(self.modelo.Runtime + self.initial_solution_time, 4)
+        time_subtour1 = round(self.modelo._time_subtour1_constraints, 4)
+        time_subtour2 = round(self.modelo._time_subtour2_constraints, 4)
+        time_heuristic_blossom = round(self.modelo._time_blossom_heuristic_constraints, 4)
+        time_exact_blossom = round(self.modelo._time_blossom_exact_constraints, 4)
+        time_total_callback = round(self.modelo._time_total_constraints, 4)
+
+        if dict_status[self.modelo.Status] == 'OPTIMAL':
+            gap = 0
+
+        lower = round(lower, 2)
+        print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}".format(
+            self.size, self.instance, objective, lower, gap, time, dict_status[self.modelo.Status],
+            int(self.modelo.NodeCount), time_subtour1, time_subtour2, time_heuristic_blossom,
+            time_exact_blossom, time_total_callback, self.modelo._n_subtour1_constraints,
+            self.modelo._n_subtour2_constraints, self.modelo._n_blossom_heuristic_constraints,
+            self.modelo._n_blossom_exact_constraints
+        ))
+
+    def old_print_results(self):
         dict_status = {1: 'LOADED', 2: 'OPTIMAL', 3: 'INFEASIBLE', 4: 'INF_OR_UNBD', 5: 'UNBOUNDED', 6: 'CUTOFF', 7: 'ITERATION_LIMIT', 8: 'NODE_LIMIT', 9: 'TIME_LIMIT', 10: 'SOLUTION_LIMIT', 11: 'INTERRUPTED', 12: 'NUMERIC', 13: 'SUBOPTIMAL', 14: 'INPROGRESS', 15: 'USER_OBJ_LIMIT'}
         try:
-            lower = self.modelo.ObjBoundC
-        except AttributeError:
             lower = self.modelo.ObjBound
-
-        objective = float("inf")
-        gap =  float("inf")
+        except AttributeError:
+            lower = self.modelo._simplex_lower_bound
         if self.modelo.Status == GRB.OPTIMAL or self.modelo.SolCount > 0:
             objective = self.modelo.getObjective().getValue()
             gap = round((objective-lower)/lower*100,4)
@@ -1488,13 +1603,9 @@ class MathematicalModel(Problem):
             objective = round(objective,2)
 
         else:
-            #print(self.instance, ':Optimization ended with status %d' % self.modelo.Status)
-            if self.modelo.SolCount > 0:
-                objective = self.modelo.getObjective().getValue()
-                lower = self.modelo.getObjective().getValue()
-                gap = round((objective-lower)/lower*100,4)
-                lower = round(lower,2)
-                objective = round(objective,2)
+            lower = round(lower,2)
+            objective = round(self.initial_fitness,2)
+            gap = round((objective-lower)/lower*100,4)
 
         time = round(self.modelo.Runtime + self.initial_solution_time,4) 
         time_subtour1 = round(self.modelo._time_subtour1_constraints,4)

@@ -10,11 +10,11 @@ def launcherMGA(seed,size,_instancia,**kwargs):
         ejecutar += f"-{key} {value} "
     os.system(ejecutar)
 
-def launcherMILP(size,instance,subtour,solin,output,callback,bounds,_new_formulation,_newm,_relax,_mga):
-    os.system(f"/usr/local/bin/python3 {path}MM_poo.py -size {size} -instance {instance} -subtour {subtour} -initialsol {solin} -output {output} -callback {callback} -bounds {bounds} -newformulation {_new_formulation} -newm {_newm} -relax {_relax} -mga {_mga}")
+def launcherMILP(size,instance,subtour,solin,output,callback,bounds,_new_formulation,_newm,_relax,_mga,_exp_lb):
+    os.system(f"/usr/local/bin/python3 {path}MM_poo.py -size {size} -instance {instance} -subtour {subtour} -initialsol {solin} -output {output} -callback {callback} -bounds {bounds} -newformulation {_new_formulation} -newm {_newm} -relax {_relax} -mga {_mga} -explb {_exp_lb}")
 
 def set_parameters(argv):
-    global paralelo,size,alg,subtour,bounds,initialsol,callback,new_formulation,newm,relax,mga, P_OX, P_PMX, P_UPMX, P_NNH, P_TSP, P_RPT, P_NNHJ, P_RPJ, MS1, MS2, P_EM, P_RM, P_SM, P_2OPT, P_JLS, P_JEM, ELITE, POBLACION, CXPB, MUTPB, IT, TOURN, TIMELIMIT,parameters_value
+    global paralelo,size,alg,subtour,bounds,initialsol,callback,new_formulation,newm,relax,mga, P_OX, P_PMX, P_UPMX, P_NNH, P_TSP, P_RPT, P_NNHJ, P_RPJ, MS1, MS2, P_EM, P_RM, P_SM, P_2OPT, P_JLS, P_JEM, ELITE, POBLACION, CXPB, MUTPB, IT, TOURN, TIMELIMIT,parameters_value,exp_lb
     paralelo = "sequential"
     size = "tsplib"
     alg = "gurobi"
@@ -71,6 +71,7 @@ def set_parameters(argv):
         elif opts[i][0][1:] == "newm": newm = str(opts[i][1]).lower()
         elif opts[i][0][1:] == "relax": relax = str(opts[i][1]).lower()
         elif opts[i][0][1:] == "mga": mga = str(opts[i][1]).lower()
+        elif opts[i][0][1:] == "explb": exp_lb = str(opts[i][1])
         elif opts[i][0][1:] == "OX"   : P_OX    =  float(opts[i][1])
         elif opts[i][0][1:] == "PMX"  : P_PMX   =  float(opts[i][1])  
         elif opts[i][0][1:] == "UMPX" : P_UPMX  =  float(opts[i][1])    
@@ -132,24 +133,23 @@ instance_dict = {"tsplib":tsplib,
                  "transitional":sml_instance}
 
 
-argv = ["-p"              , "parallel",
-        "-size"           , "medium",
-        "-alg"            , "gurobi",
-        "-subtour"        , "gg",
-        "-initialsol"     , "True",
-        "-callback"       , "none",
-        "-bounds"         , "False",
-        "-newformulation" , "False",
-        "-newm"           , "False",
-        "-relax"          , "True",
-        "-mga"            , "False" ]
+# argv = ["-p"             , "parallel", 
+#         "-size"           , "transitional",
+#         "-alg"            , "gurobi",
+#         "-subtour"        , "wc",
+#         "-initialsol"     , "True",
+#         "-callback"       , "both_blossom2",
+#         "-bounds"         , "True",
+#         "-newformulation" , "False",
+#         "-newm"           , "True",
+#         "-relax"          , "False",
+#         "-mga"            , "False",
+#         "-explb"         , "0"]  
 
-
-# argv = sys.argv[1:]
-# for argv in [argv3,argv4]:
+argv = sys.argv[1:]
 set_parameters(argv)
-
 if __name__ == "__main__":
+    print(f"Running with parameters: {[i for i in argv]} ")
     seed = [i for i in range(10)]
     pool = multiprocessing.Pool(processes=max(1, multiprocessing.cpu_count()-2))
     # print(f"Running with parameters: {[i for i in argv]} ")
@@ -162,9 +162,13 @@ if __name__ == "__main__":
                 launcherMGA(_seed,size,_instancia,**parameters_value)
     else:
         # print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}".format("size","instance","obj","lb","gap","time","status","NodeCount","t_sec1","t_sec2","t_heur","t_exact","t_total","#sec1","#sec2","#heur","#exact"))
+                
         for k,_instance in enumerate(instance_dict[size]):
             if paralelo == "parallel":
-                pool.apply_async(launcherMILP, args=(size,_instance,subtour,initialsol,"False",callback,bounds,new_formulation,newm,relax,mga))
+                if exp_lb == "2" and _instance in (10,12,16):
+                    continue
+
+                pool.apply_async(launcherMILP, args=(size,_instance,subtour,initialsol,"False",callback,bounds,new_formulation,newm,relax,mga,exp_lb))
             elif paralelo == "sequential":
                 launcherMILP(size,_instance,subtour,initialsol,"False",callback,bounds,new_formulation,newm,relax,mga)
     

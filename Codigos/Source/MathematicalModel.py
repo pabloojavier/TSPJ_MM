@@ -219,7 +219,8 @@ class MathematicalModel(Problem):
                  time_limit : int = 7200,
                  new_m : bool = False,
                  relax : bool = False,
-                 mga : bool = False
+                 mga : bool = False,
+                 exp_lb : int = 0
                  ):
         """
         Initialize mathematical model with some default values
@@ -243,6 +244,11 @@ class MathematicalModel(Problem):
         self.relax = relax
         self.new_formulation = new_formulation
         self.mga = mga
+        if int(exp_lb) in [0,1,2]:
+            self.exp_lb = int(exp_lb)
+        else:
+            raise ValueError("exp_lb must be 0, 1 or 2")
+
         self.callback_dict = {"cut_integer_separation":MathematicalModel.CUT_integer_separation,
                               "cut_naive_fractional_separation":MathematicalModel.CUT_naive_fractional_separation,
                               "cut_smarter_fractional_separation":MathematicalModel.CUT_smarter_fractional_separation,
@@ -295,6 +301,8 @@ class MathematicalModel(Problem):
         self.M = np.full((len(self.cities), len(self.cities)), self.M)
 
     def compute_new_M(self):
+        menor_arco_depot = min(self.TT[0][i] for i in range(1,self.n))
+
         self.M = np.zeros((len(self.cities),len(self.cities)))
         self.sum_min_row = 0
         for j in range(1,len(self.cities)):
@@ -303,7 +311,12 @@ class MathematicalModel(Problem):
             self.sum_min_row += np.min(self.TT[i][np.nonzero(self.TT[i])])
             for j in range(len(self.cities)):
                 if i != j:
-                    self.M[i,j] = self.initial_route_fitness + self.TT[i][j]
+                    if self.exp_lb == 0:
+                        self.M[i,j] = self.initial_route_fitness + self.TT[i][j] 
+                    elif self.exp_lb == 1:
+                        self.M[i,j] = self.initial_route_fitness + self.TT[i][j] - self.TT[self.last_node_initial_route][0]
+                    elif self.exp_lb == 2:
+                        self.M[i,j] = self.initial_route_fitness + self.TT[i][j] - menor_arco_depot
 
     def create_initial_solution(self):
         self.initial_jobs = NNJA(self.initial_route[1:],self.JT) 
@@ -320,6 +333,7 @@ class MathematicalModel(Problem):
         self.initial_route_fitness = self.route_fitness(self.initial_route[1:])
         self.initial_arch = sort_arch(self.initial_route)
         self.initial_job_arch = sort_jobs(self.initial_route[1:],self.initial_jobs)
+        self.last_node_initial_route = self.initial_route[-1]
 
     def create_base_model(self):
         """
@@ -342,10 +356,11 @@ class MathematicalModel(Problem):
 
         self.modelo._simplex_lower_bound = 1e-9
         self.modelo._relax = self.relax
+        self.modelo._stop_flag = False
 
         self.Cmax = self.modelo.addVar(vtype=GRB.CONTINUOUS,name="Cmax")
 
-        var_mode = GRB.CONTINUOUS if self.relax else GRB.BINARY
+        var_mode = GRB.BINARY
         self.x = self.modelo.addVars(self.arch, vtype=var_mode, name='x')
         self.y = self.modelo.addVars(self.jobs_arch, vtype=var_mode, name='y')
         self.TS = self.modelo.addVars(self.cities,vtype=GRB.CONTINUOUS,name="TS")
@@ -402,10 +417,11 @@ class MathematicalModel(Problem):
 
         self.modelo._simplex_lower_bound = 1e-9
         self.modelo._relax = self.relax
+        self.modelo._stop_flag = False
 
         self.Cmax = self.modelo.addVar(vtype=GRB.CONTINUOUS,name="Cmax")
 
-        var_mode = GRB.CONTINUOUS if self.relax else GRB.BINARY
+        var_mode = GRB.BINARY
         self.x = self.modelo.addVars(self.arch, vtype=var_mode, name='x')
         self.y = self.modelo.addVars(self.jobs_arch, vtype=var_mode, name='y')
 
@@ -449,7 +465,7 @@ class MathematicalModel(Problem):
         
         self.modelo.Params.Threads = 1
         #0=primal simplex, 1=dual simplex, 2=barrier, 3=concurrent, 4=deterministic concurrent
-        self.modelo.setParam("Method",2) 
+        self.modelo.setParam("Method",1) 
         
         self.modelo.update()
 
@@ -1116,13 +1132,33 @@ class MathematicalModel(Problem):
     
     @staticmethod
     def both_blossom_method2(model:gp.Model, donde):
+        if model._stop_flag == True:
+            model.terminate()
+            return
+        
+        if model._relax == True and donde == gp.GRB.Callback.MESSAGE:
+            gurobi_msj = model.cbGet(gp.GRB.Callback.MSG_STRING)
+            if 'Root relaxation: objective' in gurobi_msj:
+                objective_index = gurobi_msj.index('objective')
+                seconds_index = gurobi_msj.index('seconds')
+                objective_number = float(gurobi_msj[objective_index + len('objective'):seconds_index].strip().split(',')[0])
+                seconds_number = float(gurobi_msj[seconds_index - 1:objective_index:-1].strip()[::-1].split(',')[-1])
+                model._objective_root_relaxation = objective_number
+                model._time_root_relaxation = seconds_number
+                model._where_it_stopped = 'msj_r_rl'
+                model._stop_flag = True
+                model.terminate()
+                return
+            
+            mensaje1 = ['Expl','Unexpl','Obj','Depth','IntInf','Incumbent','BestBd','Gap','It/Node','Time']
+            condition = all([msj in gurobi_msj for msj in mensaje1])
+            if condition :
+                model._stop_flag = True
+                model._where_it_stopped = 'msj_iter'
+        
         initial_subtour = time.time()
         n = model._n
         case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( model.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
-        
-        if donde == gp.GRB.Callback.SIMPLEX:
-            model._simplex_lower_bound = model.cbGet(gp.GRB.Callback.SPX_OBJVAL)
-
         if case2:
             xval = model.cbGetNodeRel(model._xvars)
         else:
@@ -1421,13 +1457,31 @@ class MathematicalModel(Problem):
         m._time_total_constraints += time.time() - initial_subtour
 
     @staticmethod
-    def get_lower_bound_callback(modelo:gp.Model, donde):
+    def get_lower_bound_callback(model:gp.Model, donde):
+        if model._stop_flag == True:
+            model.terminate()
+            return
         
-        if donde == gp.GRB.Callback.SIMPLEX:
-            modelo._simplex_lower_bound = modelo.cbGet(gp.GRB.Callback.SPX_OBJVAL)
-
-
+        if model._relax == True and donde == gp.GRB.Callback.MESSAGE:
+            gurobi_msj = model.cbGet(gp.GRB.Callback.MSG_STRING)
+            if 'Root relaxation: objective' in gurobi_msj:
+                objective_index = gurobi_msj.index('objective')
+                seconds_index = gurobi_msj.index('seconds')
+                objective_number = float(gurobi_msj[objective_index + len('objective'):seconds_index].strip().split(',')[0])
+                seconds_number = float(gurobi_msj[seconds_index - 1:objective_index:-1].strip()[::-1].split(',')[-1])
+                model._objective_root_relaxation = objective_number
+                model._time_root_relaxation = seconds_number
+                model._where_it_stopped = 'msj_r_rl'
+                model._stop_flag = True
+                model.terminate()
+                return
             
+            mensaje1 = ['Expl','Unexpl','Obj','Depth','IntInf','Incumbent','BestBd','Gap','It/Node','Time']
+            condition = all([msj in gurobi_msj for msj in mensaje1])
+            if condition :
+                model._stop_flag = True
+                model._where_it_stopped = 'msj_iter'
+   
     def add_new_constraint(self):
         """
         Add new constraints, builts in this work.
@@ -1437,7 +1491,12 @@ class MathematicalModel(Problem):
         
         if hasattr(self,'TS'):
             for i in self.cities:
-                self.modelo.addConstr(self.TS[i] <= self.initial_route_fitness , name = f'bounds1_TS_{i}')
+                if self.exp_lb == 0:
+                    self.modelo.addConstr(self.TS[i] <= self.initial_route_fitness , name = f'bounds1_TS_{i}')
+                elif self.exp_lb == 1:
+                    self.modelo.addConstr(self.TS[i] <= self.initial_route_fitness - self.TT[self.last_node_initial_route][0] , name = f'bounds1_TS_{i}')
+                elif self.exp_lb == 2:
+                    self.modelo.addConstr(self.TS[i] <= self.initial_route_fitness - menor_arco_depot , name = f'bounds1_TS_{i}')
 
             for i in range(1,self.n):
                 self.modelo.addConstr(self.TS[i] >= menor_arco_depot , name = f'bounds2_TS_{i}') 
@@ -1447,19 +1506,17 @@ class MathematicalModel(Problem):
                 LB = np.min(self.TT[i][np.nonzero(self.TT[i])])
                 for j in self.cities:
                     if i!=j:
-                        self.modelo.addConstr(self.t[(i,j)] <= self.initial_route_fitness * self.x[(i,j)], name = f'bounds1_t_{i}_{j}')            
-                        #self.modelo.addConstr(self.t[(i,j)] <= route_fitness, name = f'bounds1_t_{i}_{j}')                     
+                        if self.exp_lb == 0:
+
+                            self.modelo.addConstr(self.t[(i,j)] <= self.initial_route_fitness * self.x[(i,j)], name = f'bounds1_t_{i}_{j}')
+                        elif self.exp_lb == 1:
+                            self.modelo.addConstr(self.t[(i,j)] <= (self.initial_route_fitness-self.TT[self.last_node_initial_route][0]) * self.x[(i,j)], name = f'bounds1_t_{i}_{j}')
+                        elif self.exp_lb == 2:
+                            self.modelo.addConstr(self.t[(i,j)] <= (self.initial_route_fitness - menor_arco_depot ) * self.x[(i,j)], name = f'bounds1_t_{i}_{j}')
+                        
                     if i!=j and i>0:
                         self.modelo.addConstr(self.t[(i,j)] >= LB*self.x[(i,j)] , name = f'bouns3_t_{i}_{j}')
-            #for i in self.cities:
-            #    LB = np.min(self.TT[i][np.nonzero(self.TT[i])])
-            #    for j in self.cities:
-            #        if i!=j and i > 0:
-            #            self.modelo.addConstr(self.t[(i,j)] >= LB*self.x[(i,j)] , name = f'bouns3_t_{i}_{j}')
-
-        # Cota total route
-        #print(route_fitness) # no valido
-        #self.modelo.addConstr(gp.quicksum(self.x[(i,j)]*self.TT[i][j] for i in self.cities for j in self.cities[1:] if i!=j) <= route_fitness)                 
+     
         # Cota superior de solucion inicial (lkh+NNJ)
         self.modelo.addConstr(self.Cmax<=self.initial_fitness)
         # Cota inferior de solucion inicial
@@ -1497,6 +1554,7 @@ class MathematicalModel(Problem):
     def optimize(self):
         self.modelo.update()
         if self.callback in ("none",None) :
+            self.modelo.update()
             self.modelo.optimize(MathematicalModel.get_lower_bound_callback)
         elif self.callback in self.callback_dict.keys():
             self.modelo.Params.LazyConstraints = 1
@@ -1519,6 +1577,7 @@ class MathematicalModel(Problem):
                 self.modelo._DG = None
             
             try:
+                self.modelo.update()
                 self.modelo.optimize(self.callback_dict[self.callback])
             except Exception as e:
                 raise Exception("Callback error") from e
@@ -1531,7 +1590,7 @@ class MathematicalModel(Problem):
         if self.bounds:
             self.add_new_constraint()
         
-        if self.initial_solution:# == True and self.relax == False:
+        if self.initial_solution:
             self.add_initial_solution()
 
         self.modelo.Params.TimeLimit = max(self.time_limit,self.time_limit - self.initial_solution_time)
@@ -1551,14 +1610,19 @@ class MathematicalModel(Problem):
         return objective, lower, gap
 
     def get_lb_results(self):
-        if self.modelo.Status == GRB.OPTIMAL or self.modelo.SolCount > 0:
-            lower = round(self.modelo.ObjBound, 4)
-        else:
-            lower = round(getattr(self.modelo, 'ObjBound', self.modelo._simplex_lower_bound), 4)
-        
-        objective = round(self.modelo.ObjVal, 2)
-        gap = round((objective - lower) / lower * 100, 4)
+        if not hasattr(self.modelo,'_where_it_stopped'):
+            lower = round(self.modelo._simplex_lower_bound, 4)
+            self.modelo._where_it_stopped = 'NO_LB'
 
+        if self.modelo._where_it_stopped != 'msj_iter':
+            lower = round(self.modelo._objective_root_relaxation, 4)
+        else:
+            try:
+                lower = round(getattr(self.modelo, 'ObjBound', self.modelo.ObjBoundC), 2)
+            except AttributeError:
+                lower = round(self.modelo._objective_root_relaxation, 2)
+        objective = float('inf')
+        gap = float('inf')
         return objective, lower, gap
 
     def print_results(self):
@@ -1578,12 +1642,17 @@ class MathematicalModel(Problem):
         time_exact_blossom = round(self.modelo._time_blossom_exact_constraints, 4)
         time_total_callback = round(self.modelo._time_total_constraints, 4)
 
-        if dict_status[self.modelo.Status] == 'OPTIMAL':
+        status = dict_status[self.modelo.Status]
+        if status == 'OPTIMAL':
             gap = 0
+            lower = objective
 
+        if self.relax == True and self.modelo.Status == GRB.INTERRUPTED:
+            status = self.modelo._where_it_stopped.upper()
+        
         lower = round(lower, 2)
         print("{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<15}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}{:<10}".format(
-            self.size, self.instance, objective, lower, gap, time, dict_status[self.modelo.Status],
+            self.size, self.instance, objective, lower, gap, time, status,
             int(self.modelo.NodeCount), time_subtour1, time_subtour2, time_heuristic_blossom,
             time_exact_blossom, time_total_callback, self.modelo._n_subtour1_constraints,
             self.modelo._n_subtour2_constraints, self.modelo._n_blossom_heuristic_constraints,
@@ -1653,6 +1722,15 @@ class MathematicalModel(Problem):
         
         job_sol = {key[0]:key[1] for key,value in self.modelo.getAttr('x', self.y).items() if value>0}
         job_sol = [0]+[job_sol[i] for i in tsp_solution[1:]]
+
+        # t_values = {key:value for key,value in self.modelo.getAttr('x', self.t).items()}
+        # x_values = {key:value for key,value in self.modelo.getAttr('x', self.x).items()}
+        # print(tsp_sol)
+        # for key in tsp_sol:
+        #     print(key,t_values[key],x_values[key])
+
+        # exit(0)
+
         return tsp_solution,job_sol
     
     def print_solution(self):

@@ -11,18 +11,19 @@ from Source.MathematicalModel import MathematicalModel as MILP
 argv = sys.argv[1:]
 opts = [(argv[2*i],argv[2*i+1]) for i in range(int(len(argv)/2))]
 
-size = "transitional"
-instance = 1
-output = True
-subtour = "wc" 
-initial_sol = True
-callback =  'subtourelim1'
-bounds = True
-new_formulation = True
-time_limit = 7200
-new_m = True
-relax = False
-mga = False
+size              = "tsplib"
+instance          = 'gr17'
+output            = False
+subtour           = "wc" 
+initial_sol       = True
+callback          = 'both_blossom2'
+bounds            = True
+new_formulation   = True
+time_limit        = 7200
+new_m             = True
+relax             = False
+mga               = False
+exp_lb            = 0
 
 for i in range(len(opts)):
     if opts[i][0][1:] == "size":  size  = opts[i][1]
@@ -40,6 +41,7 @@ for i in range(len(opts)):
     elif   opts[i][0][1:] == "newm": new_m =  False if opts[i][1].lower() == "false" else True
     elif   opts[i][0][1:] == "relax": relax =  False if opts[i][1].lower() == "false" else True
     elif   opts[i][0][1:] == "mga": mga =  False if opts[i][1].lower() == "false" else True
+    elif   opts[i][0][1:] == "explb": exp_lb =  opts[i][1]
 
 initial_time = time.time()
 MM = MILP(size,
@@ -53,8 +55,10 @@ MM = MILP(size,
           time_limit,
           new_m = new_m,
           relax = relax,
-          mga = mga
+          mga = mga,
+          exp_lb = exp_lb
           )
 MM.run()
+MM.get_solution()
 MM.print_results()
 

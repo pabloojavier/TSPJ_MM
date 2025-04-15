@@ -220,7 +220,8 @@ class MathematicalModel(Problem):
                  new_m : bool = False,
                  relax : bool = False,
                  mga : bool = False,
-                 exp_lb : int = 0
+                 exp_lb : int = 0,
+                 **params: Dict[str,Any]
                  ):
         """
         Initialize mathematical model with some default values
@@ -248,6 +249,7 @@ class MathematicalModel(Problem):
             self.exp_lb = int(exp_lb)
         else:
             raise ValueError("exp_lb must be 0, 1 or 2")
+        self.params = params
 
         self.callback_dict = {"cut_integer_separation":MathematicalModel.CUT_integer_separation,
                               "cut_naive_fractional_separation":MathematicalModel.CUT_naive_fractional_separation,
@@ -269,6 +271,7 @@ class MathematicalModel(Problem):
                               "heuristic_blossom2":MathematicalModel.heuristic_blossom_method2,
                               "both_blossom2":MathematicalModel.both_blossom_method2,
                               "both_blossom3":MathematicalModel.both_blossom_method3,
+                              'ap':MathematicalModel.assignment_problem_cut,
                               'custom':callback}
         if self.output:
             print(f'running with: {self.size} {self.instance} {self.subtour} {self.initial_solution} {self.callback} {self.bounds} {self.new_formulation} {self.time_limit} {self.new_m} {self.relax} {self.mga}')
@@ -319,7 +322,17 @@ class MathematicalModel(Problem):
                         self.M[i,j] = self.initial_route_fitness + self.TT[i][j] - menor_arco_depot
 
     def create_initial_solution(self):
-        self.initial_jobs = NNJA(self.initial_route[1:],self.JT) 
+        initial_time = time.time()
+        exp_lb = self.exp_lb
+        exp_lb = 0
+        if self.exp_lb == 0:
+            self.initial_jobs = NNJA(self.initial_route[1:],self.JT) 
+            name = 'NNJA'
+        elif self.exp_lb == 1:
+            AP = AssignmentProblem(self.size,self.instance,output = False)
+            AP.solve()
+            self.initial_jobs = AP.get_jobs()
+            name = 'AP'
         if self.mga:
             from Source.MGA import MGA
             mga = MGA(self.size,self.instance,seed = 0)
@@ -334,6 +347,8 @@ class MathematicalModel(Problem):
         self.initial_arch = sort_arch(self.initial_route)
         self.initial_job_arch = sort_jobs(self.initial_route[1:],self.initial_jobs)
         self.last_node_initial_route = self.initial_route[-1]
+        # print(name,self.size,self.instance,self.initial_fitness,time.time()-initial_time)
+        # exit(0)
 
     def create_base_model(self):
         """
@@ -440,6 +455,8 @@ class MathematicalModel(Problem):
             self.modelo.addConstr(self.Cmax >= gp.quicksum(self.t[(i,k)] for k in self.cities if i != k) 
                                              + self.x[(i,0)]*self.TT[0][i] , name = f'Cmax_{i}_0')
 
+        # if self.callback != 'ap':
+            # print('adding job assignment constraints')
         for k in self.jobs[1:self.n]:
             self.modelo.addConstr(gp.quicksum(self.y[(i,k)] for i in self.cities if i != 0) == 1 , name = f'Job_{k}_out')
 
@@ -1072,7 +1089,96 @@ class MathematicalModel(Problem):
             m._time_subtour1_constraints += time.time()-initial
             
         m._time_total_constraints += time.time()-initial
+    
+    @staticmethod
+    def assignment_problem_cut(model:gp.Model,donde):
+        if model._stop_flag == True:
+            model.terminate()
+            return
         
+        if model._relax == True and donde == gp.GRB.Callback.MESSAGE:
+            gurobi_msj = model.cbGet(gp.GRB.Callback.MSG_STRING)
+            if 'Root relaxation: objective' in gurobi_msj:
+                objective_index = gurobi_msj.index('objective')
+                seconds_index = gurobi_msj.index('seconds')
+                objective_number = float(gurobi_msj[objective_index + len('objective'):seconds_index].strip().split(',')[0])
+                seconds_number = float(gurobi_msj[seconds_index - 1:objective_index:-1].strip()[::-1].split(',')[-1])
+                model._objective_root_relaxation = objective_number
+                model._time_root_relaxation = seconds_number
+                model._where_it_stopped = 'msj_r_rl'
+                model._stop_flag = True
+                model.terminate()
+                return
+            
+            mensaje1 = ['Expl','Unexpl','Obj','Depth','IntInf','Incumbent','BestBd','Gap','It/Node','Time']
+            condition = all([msj in gurobi_msj for msj in mensaje1])
+            if condition :
+                model._stop_flag = True
+                model._where_it_stopped = 'msj_iter'
+        
+        initial_subtour = time.time()
+        n = model._n
+        case2 = ( donde == gp.GRB.Callback.MIPNODE ) and ( model.cbGet(gp.GRB.Callback.MIPNODE_STATUS) == gp.GRB.OPTIMAL )
+        if case2:
+            xval = model.cbGetNodeRel(model._xvars)
+        else:
+            model._time_subtour1_constraints += time.time()-initial_subtour
+            model._time_subtour2_constraints += time.time()-initial_subtour
+            model._time_total_constraints += time.time()-initial_subtour
+            return
+        flag = True     
+        if case2:
+            n = model._n
+            tour = sc.SEC(xval, 0.00001, n)
+            if len(tour) > 0:
+                tour2 = [i for i in range(n) if i not in tour]
+                model.cbLazy(gp.quicksum(model._xvars[i,j] for i in tour for j in tour2) >= 1)
+                model._n_subtour2_constraints += 1
+                flag = False
+            model._time_subtour2_constraints += time.time()-initial_subtour
+        if flag:
+            n = model._n
+            tour = [i for i in range(n+1)]
+            MathematicalModel.subtour_method(tour, xval, n)
+            
+            if len(tour) < n:
+                tour2 = [i for i in range(n) if i not in tour]
+                model.cbLazy(gp.quicksum(model._xvars[i, j] for i in tour for j in tour2) >= 1)
+                model._n_subtour1_constraints += 1
+                
+            model._time_subtour1_constraints += time.time()-initial_subtour
+
+        # Blossom inequalities
+        initial_heuristic_blossom = time.time()
+        W,T = heuristic_separation(xval,n)
+        # Se aumenta el contador de la separación heuristica
+        model._time_blossom_heuristic_constraints += time.time()-initial_heuristic_blossom
+        
+        if len(T) >= 3:
+            model.cbLazy(gp.quicksum(model._xvars[e] for e in [e for e in xval if xval[e] > 0 and e[0] in W and e[1] in W and e[0]<e[1]] )+ 
+                    gp.quicksum(model._xvars[e] for e in T)<=len(W)+sum([len(e) for e in T])-(3*len(T)+1)/2)
+            model._n_blossom_heuristic_constraints += 1
+            model._time_total_constraints += time.time() - initial_subtour
+            return
+        
+        initial_exact_blossom = time.time()
+        W,Fe = letchford_algorithm(model._G,xval)
+        # Se aumenta el contador de separación exacta
+        model._time_blossom_exact_constraints += time.time()-initial_exact_blossom
+        
+        if W != None and Fe != None:
+            model.cbLazy(gp.quicksum(model._xvars[e] for e in [e for e in xval if xval[e] > 0 and e[0] in W and e[1] in W and e[0]<e[1]] )+ 
+                    gp.quicksum(model._xvars[e] for e in Fe)<=len(W)+sum([len(e) for e in Fe])-(3*len(Fe)+1)/2)
+            model._n_blossom_exact_constraints += 1
+            model._time_total_constraints += time.time() - initial_subtour
+            return
+        
+
+        for assignation in model._ap_solution:
+                model.cbLazy(model._yvars[assignation]== 1)
+        #En caso que no se agreguen restricciones, se aumenta el contador global
+        model._time_total_constraints += time.time() - initial_subtour
+
     @staticmethod
     def both_blossom_method(model:gp.Model, donde):
         initial_subtour = time.time()
@@ -1558,6 +1664,9 @@ class MathematicalModel(Problem):
             self.modelo.optimize(MathematicalModel.get_lower_bound_callback)
         elif self.callback in self.callback_dict.keys():
             self.modelo.Params.LazyConstraints = 1
+            ap = AssignmentProblem(self.size,self.instance)
+            ap.solve()
+            self.modelo._ap_solution = ap.get_solution()
             self.modelo._xvars = self.x
             self.modelo._yvars = self.y
             self.modelo._JT = self.JT
@@ -1567,7 +1676,8 @@ class MathematicalModel(Problem):
             self.modelo._cities = self.cities
             self.modelo._n = self.n
             self.modelo._coords = self.coords
-            
+            self.modelo._G = nx.Graph(nx.complete_graph(self.n))
+
             if "blossom" in self.callback :
                 self.modelo._G = nx.Graph(nx.complete_graph(self.n))
             elif 'separation' in self.callback:
@@ -1735,3 +1845,53 @@ class MathematicalModel(Problem):
     
     def print_solution(self):
         print(self.get_solution())
+
+class AssignmentProblem(Problem):
+    def __init__(self,
+                 size:str,
+                 instance,
+                 output = False,
+                 ):
+
+
+        super().__init__(size,instance)
+        self.size = size
+        self.output = output
+    
+    def solve(self):
+        env = gp.Env(empty=True)
+        env.setParam('OutputFlag', 1 if self.output else 0)
+        env.start()
+        self.model = gp.Model("Assignment Problem",env=env)
+        cities_without_depot = [i for i in self.cities if i != 0]
+        jobs = cities_without_depot
+        self.x = self.model.addVars(cities_without_depot,jobs,vtype=GRB.BINARY,name="x")
+
+        self.model.setObjective(
+            gp.quicksum(self.JT[i,j]*self.x[i,j] for i in self.cities for j in self.cities if i > 0 and j > 0),
+            GRB.MINIMIZE
+        )
+
+        for i in self.cities:
+            if i > 0:
+                self.model.addConstr(gp.quicksum(self.x[i,j] for j in self.cities if j > 0) == 1, name = "c1"+str(i))
+
+        for j in self.cities:
+            if j > 0:
+                self.model.addConstr(gp.quicksum(self.x[i,j] for i in self.cities if i > 0) == 1, name = "c2"+str(j))
+
+        for i in range(2, len(cities_without_depot)):
+                        self.model.addConstr(gp.quicksum(self.x[i-1,j]*self.JT[i-1,j] for j in cities_without_depot) >= gp.quicksum(self.x[i,j]*self.JT[i,j] for j in cities_without_depot), name="desc"+str(i))
+
+        self.model.update()
+
+        self.model.optimize()
+        self.solution = sorted([i for i in self.x.keys() if self.x[i].x == 1],key = lambda x: x[0])
+        
+        self.objective = self.model.objVal
+
+    def get_solution(self):
+        return self.solution
+    
+    def get_jobs(self):
+        return [i[1] for i in self.solution]

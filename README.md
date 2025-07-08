@@ -1,52 +1,12 @@
-# A multioperator Genetic Algorithm for the Traveling Salesman Problem with Job-times (TSPJ)
-date: "November, 2023"
+# Branch-and-cut algorithms for the traveling salesman problem with job-times
+date: "July, 2025"
 
 ## Abstract:
 
-This paper addresses the traveling salesman problem with job-times (TSPJ). TSPJ considers two sets of equal size, a set of tasks and a set of vertices, where a traveler must visit each vertex exactly once, return to the starting vertex, and perform a unique task at each vertex. Each task is assigned to only one vertex, and each task is completed with a job-time that depends on each vertex. Thus, the objective is to minimize the time of the last task performed. However, due to its NP-hardness, existing algorithms do not optimally solve the TSPJ larger instances. Therefore, we propose an approach based on a multioperator genetic algorithm (MGA) that utilizes various initial population procedures, crossover and mutation operators. MGA applies five initial population procedures to generate a diverse population, and employs three crossover operators and six mutation operators, with four mutations focused on diversification and two designed to aid intensification. Furthermore, to improve the quality of the best individual found, a local search is used in every generation, and generational replacement with elitism is considered when generating a new population. MGA is evaluated on four sets of instances ranging in size from 17 to 1200 vertices: tsplib, small, medium, and large. Our approach outperforms the state-of-the-art algorithms on the four instance sets. This performance is attributed to the synergistic effect of the multioperators of crossover and mutation, along with effective parameter tuning.
+The traveling salesman problem with job times (TSPJ) involves a traveler visiting a set of vertices, ensuring one visit to each of them while he initiates a job. The time of each job depends on the vertex where it is performed. Once started, the traveler moves to the next vertex, and the job continues autonomously. The aim is to minimize the maximum completion time. Since the problem is NP-hard, existing mixed-integer linear programming (MILP) models are unable to solve large instances efficiently. Therefore, this paper proposes to enhance the existing MILP model and introduces a new MILP model for the TSPJ, which incorporates valid lower and upper bounds to strengthen them. Moreover, we propose two branch-and-cut (B\&C) algorithms based on the improved existing model and the new one. These algorithms integrate strengthened exponential-size formulations that explicitly incorporate subtour elimination constraints and blossom inequalities. B\&C algorithms are tested on instances from the literature, comprising four sets of instances with sizes ranging from 17 to 1200 vertices. Computational results show that the proposed B\&C algorithms outperform the state-of-the-art MILP models in all instances. Since no formulation achieves optimality within the given time limit for large instances, only three medium instances with up to 454 vertices have reached optimality. Consequently, we propose a fifth set of instances, ranging from 100 to 390 vertices, to further assess performance limits. B\&C algorithms demonstrate improved performance with lower gap values in all instances, and faster computing times while optimally solving instances with up to 386 vertices.
 
 
 ## How to run
 * All codes are in 'Codigos' folder.
-* Just run 'MGA_po.py' file to run just one instance
+* Just run 'MM_po.py' file to run just one instance
 * To run all instance from one size, run 'multi.py'
-
-### Args to run
-To run 'multi.py' you have to specify the following args:
-
-```
-python3.9 multi.py -p <parallel/secuential> -size <tsplib/Small/Medium/Large>
-```
-
-Where 'p' is the type of execution (parallel or secuential) and 'size' is the size of the instances to run.
-
-Also, you can change the following args (OPTIONAL):
-- OX
-- PMX
-- UMPX
-- NNH
-- TSP
-- RPT
-- NNHJ
-- RPJ
-- MS1
-- MS2
-- EM
-- RM
-- SM
-- OPT2
-- JLS
-- JEM
-- POB
-- CXPB
-- MUTPB
-- IT
-- ELITE
-- TOURN
-- TIMELIMIT
-
-If you dont change them, the default values will be used.
-An example of how to change them is:
-```
-python3 multi.py -p parallel -size tsplib -OPT2 0.9 -TIMELIMIT 100 -IT 1000
-```
